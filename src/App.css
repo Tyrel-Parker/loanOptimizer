@@ -43,3 +43,11 @@
 .read-the-docs {
   color: #888;
 }
+
+input, select, textarea{
+  color: #000000;
+}
+
+textarea:focus, input:focus {
+  color: #ff0000;
+}
