@@ -24,43 +24,105 @@ import {
 } from './utils/calculators';
 import { exportScenariosToFile, importScenariosFromFile } from './utils/importExport';
 
-// Define default loan and scenario
-const defaultLoan = {
-  id: Date.now(),
+// Constants for ALL scenario
+const ALL_SCENARIO_ID = 'ALL_SCENARIO';
+const ALL_SCENARIO_NAME = 'ALL';
+
+// Function to create a default car loan with unique ID
+const createDefaultCarLoan = () => ({
+  id: Date.now() + Math.random() * 1000, // Ensure unique ID
   name: "Car",
   principal: 30000,
   rate: 5,
-  term: 84, // years in months
-  endDate: calculateEndDate(120).toISOString().split('T')[0], // Format as YYYY-MM-DD
+  term: 84,
+  endDate: calculateEndDate(84).toISOString().split('T')[0],
   extraPayment: 0
-};
+});
 
-const defaultLoan1 = {
-  id: Date.now(),
+// Function to create a default personal loan with unique ID
+const createDefaultPersonalLoan = () => ({
+  id: Date.now() + Math.random() * 1000 + 1, // Ensure different from car loan
   name: "Personal Loan",
   principal: 10000,
   rate: 12,
-  term: 60, // years in months
-  endDate: calculateEndDate(120).toISOString().split('T')[0], // Format as YYYY-MM-DD
+  term: 60,
+  endDate: calculateEndDate(60).toISOString().split('T')[0],
   extraPayment: 0
-};
+});
 
-const defaultScenario = {
-  id: Date.now(),
+// Function to create a default scenario with unique IDs
+const createDefaultScenario = () => ({
+  id: Date.now() + Math.random() * 1000 + 2,
   name: "Sample",
-  loans: [defaultLoan, defaultLoan1],
+  loans: [createDefaultCarLoan(), createDefaultPersonalLoan()],
   totalBudget: 800,
   refinanceRate: 7.8
+});
+
+// Function to create the ALL scenario
+const createAllScenario = (scenarios) => {
+  // Collect all loans from all scenarios (except the ALL scenario itself)
+  const allLoans = [];
+  let combinedBudget = 0;
+  let averageRefinanceRate = 0;
+  let rateCount = 0;
+  
+  scenarios.forEach(scenario => {
+    if (scenario.id === ALL_SCENARIO_ID) return; // Skip the ALL scenario itself
+    
+    // Add all loans from this scenario with unique IDs and scenario prefixes
+    scenario.loans.forEach(loan => {
+      const prefixedLoan = {
+        ...loan,
+        id: `${scenario.id}_${loan.id}`, // Ensure unique ID by prefixing with scenario ID
+        name: `[${scenario.name}] ${loan.name}` // Prefix name with scenario name
+      };
+      allLoans.push(prefixedLoan);
+    });
+    
+    // Accumulate budgets and refinance rates for averaging
+    if (scenario.totalBudget > 0) {
+      combinedBudget += scenario.totalBudget;
+    }
+    if (scenario.refinanceRate > 0) {
+      averageRefinanceRate += scenario.refinanceRate;
+      rateCount++;
+    }
+  });
+  
+  // Calculate average refinance rate
+  const finalRefinanceRate = rateCount > 0 ? averageRefinanceRate / rateCount : 0;
+  
+  return {
+    id: ALL_SCENARIO_ID,
+    name: ALL_SCENARIO_NAME,
+    loans: allLoans,
+    totalBudget: combinedBudget,
+    refinanceRate: Math.round(finalRefinanceRate * 100) / 100, // Round to 2 decimal places
+    isReadOnly: true // Flag to indicate this is a special scenario
+  };
 };
 
 function App() {
   // State
-  const [scenarios, setScenarios] = useState([defaultScenario]);
-  const [activeScenarioId, setActiveScenarioId] = useState(defaultScenario.id);
+  const [scenarios, setScenarios] = useState([createDefaultScenario()]);
+  const [activeScenarioId, setActiveScenarioId] = useState(ALL_SCENARIO_ID); // Start with ALL scenario
   const [paymentStrategy, setPaymentStrategy] = useState('avalanche'); // 'avalanche' or 'snowball'
   
-  // Get the active scenario
-  const activeScenario = scenarios.find(s => s.id === activeScenarioId) || scenarios[0];
+  // Computed property to get scenarios including the ALL scenario
+  const scenariosWithAll = React.useMemo(() => {
+    const regularScenarios = scenarios.filter(s => s.id !== ALL_SCENARIO_ID);
+    const allScenario = createAllScenario(regularScenarios);
+    return [allScenario, ...regularScenarios];
+  }, [scenarios]);
+
+  // Get the active scenario (with special handling for ALL scenario)
+  const activeScenario = React.useMemo(() => {
+    if (activeScenarioId === ALL_SCENARIO_ID) {
+      return createAllScenario(scenarios.filter(s => s.id !== ALL_SCENARIO_ID));
+    }
+    return scenarios.find(s => s.id === activeScenarioId) || scenarios[0];
+  }, [activeScenarioId, scenarios]);
   
   // Load data from localStorage on initial render
   useEffect(() => {
@@ -69,7 +131,12 @@ function App() {
       try {
         const parsedData = JSON.parse(savedData);
         setScenarios(parsedData.scenarios);
-        setActiveScenarioId(parsedData.activeScenarioId);
+        // Ensure the activeScenarioId is valid - if it's not ALL_SCENARIO and not in scenarios, default to ALL_SCENARIO
+        const validScenarioId = parsedData.activeScenarioId === ALL_SCENARIO_ID || 
+                               parsedData.scenarios.find(s => s.id === parsedData.activeScenarioId) 
+                               ? parsedData.activeScenarioId 
+                               : ALL_SCENARIO_ID;
+        setActiveScenarioId(validScenarioId);
         setPaymentStrategy(parsedData.paymentStrategy || 'avalanche');
       } catch (e) {
         console.error('Error loading saved data:', e);
@@ -77,11 +144,11 @@ function App() {
     }
   }, []);
   
-  // Save data to localStorage whenever it changes
+  // Save data to localStorage whenever it changes (but don't save ALL_SCENARIO_ID as active if it's not meaningful)
   useEffect(() => {
     const dataToSave = {
       scenarios,
-      activeScenarioId,
+      activeScenarioId, // Keep the actual activeScenarioId, including ALL_SCENARIO_ID
       paymentStrategy
     };
     localStorage.setItem('multiLoanCalculator', JSON.stringify(dataToSave));
@@ -100,14 +167,11 @@ function App() {
   
   // Functions to manage scenarios
   const addScenario = () => {
-    const newId = Date.now();
+    const newId = Date.now() + Math.random() * 1000;
     const newScenario = {
       id: newId,
       name: `Scenario ${scenarios.length + 1}`,
-      loans: [{
-        ...defaultLoan,
-        id: newId + 1 // Ensure unique ID
-      }],
+      loans: [createDefaultCarLoan()], // Use the function instead of static object
       totalBudget: 0,
       refinanceRate: 0
     };
@@ -116,6 +180,11 @@ function App() {
   };
   
   const duplicateScenario = (scenarioId) => {
+    if (scenarioId === ALL_SCENARIO_ID) {
+      alert('Cannot duplicate the ALL scenario. Please select a specific scenario to duplicate.');
+      return;
+    }
+    
     const scenarioToDuplicate = scenarios.find(s => s.id === scenarioId);
     if (scenarioToDuplicate) {
       const newId = Date.now();
@@ -134,19 +203,31 @@ function App() {
   };
   
   const deleteScenario = (scenarioId) => {
-    // Don't delete the last scenario
-    if (scenarios.length <= 1) return;
+    if (scenarioId === ALL_SCENARIO_ID) {
+      console.warn('Cannot delete the ALL scenario');
+      return;
+    }
+    
+    // Don't delete the last regular scenario
+    const regularScenarios = scenarios.filter(s => s.id !== ALL_SCENARIO_ID);
+    if (regularScenarios.length <= 1) return;
     
     const updatedScenarios = scenarios.filter(s => s.id !== scenarioId);
     setScenarios(updatedScenarios);
     
-    // If the active scenario was deleted, select the first one
+    // If the active scenario was deleted, select the first regular one
     if (activeScenarioId === scenarioId) {
-      setActiveScenarioId(updatedScenarios[0].id);
+      const firstRegularScenario = updatedScenarios.find(s => s.id !== ALL_SCENARIO_ID);
+      setActiveScenarioId(firstRegularScenario.id);
     }
   };
   
   const updateScenarioName = (scenarioId, name) => {
+    if (scenarioId === ALL_SCENARIO_ID) {
+      console.warn('Cannot rename the ALL scenario');
+      return;
+    }
+    
     const updatedScenarios = scenarios.map(scenario => {
       if (scenario.id === scenarioId) {
         return { ...scenario, name };
@@ -156,8 +237,19 @@ function App() {
     setScenarios(updatedScenarios);
   };
   
+  // Update scenario selection to handle ALL scenario
+  const handleSelectScenario = (scenarioId) => {
+    setActiveScenarioId(scenarioId);
+  };
+  
   // Update a scenario field with improved error handling
   const updateScenario = useCallback((field, value) => {
+    if (activeScenarioId === ALL_SCENARIO_ID) {
+      // Don't allow editing of the ALL scenario
+      console.warn('Cannot edit the ALL scenario');
+      return;
+    }
+    
     try {
       // Use functional form to avoid stale closures
       setScenarios(currentScenarios => currentScenarios.map(scenario => {
@@ -182,6 +274,11 @@ function App() {
   
   // Functions to manage loans
   const addLoan = () => {
+    if (activeScenarioId === ALL_SCENARIO_ID) {
+      alert('Cannot add loans to the ALL scenario. Please select a specific scenario.');
+      return;
+    }
+    
     const updatedScenarios = scenarios.map(scenario => {
       if (scenario.id === activeScenarioId) {
         const newLoan = {
@@ -204,6 +301,11 @@ function App() {
   };
   
   const duplicateLoan = (loanId) => {
+    if (activeScenarioId === ALL_SCENARIO_ID) {
+      alert('Cannot duplicate loans in the ALL scenario. Please select a specific scenario.');
+      return;
+    }
+    
     const updatedScenarios = scenarios.map(scenario => {
       if (scenario.id === activeScenarioId) {
         const loanToDuplicate = scenario.loans.find(loan => loan.id === loanId);
@@ -225,6 +327,11 @@ function App() {
   };
   
   const deleteLoan = (loanId) => {
+    if (activeScenarioId === ALL_SCENARIO_ID) {
+      alert('Cannot delete loans from the ALL scenario. Please select a specific scenario.');
+      return;
+    }
+    
     const updatedScenarios = scenarios.map(scenario => {
       if (scenario.id === activeScenarioId) {
         return {
@@ -239,6 +346,11 @@ function App() {
   
   // Update loan with improved error handling
   const updateLoan = useCallback((loanId, field, value) => {
+    if (activeScenarioId === ALL_SCENARIO_ID) {
+      console.warn('Cannot edit loans in the ALL scenario');
+      return;
+    }
+    
     try {
       // First, just update the specified field without any calculations
       setScenarios(currentScenarios => currentScenarios.map(scenario => {
@@ -379,7 +491,12 @@ function App() {
   // Handle importing scenarios from a file
   const handleImportScenarios = (importedData) => {
     setScenarios(importedData.scenarios);
-    setActiveScenarioId(importedData.activeScenarioId);
+    // If the imported activeScenarioId is valid, use it, otherwise default to ALL_SCENARIO
+    const validScenarioId = importedData.activeScenarioId === ALL_SCENARIO_ID || 
+                           importedData.scenarios.find(s => s.id === importedData.activeScenarioId) 
+                           ? importedData.activeScenarioId 
+                           : ALL_SCENARIO_ID;
+    setActiveScenarioId(validScenarioId);
     setPaymentStrategy(importedData.paymentStrategy);
   };
   
@@ -387,8 +504,9 @@ function App() {
   const resetAllData = () => {
     if (window.confirm("This will reset all your data. Are you sure?")) {
       localStorage.removeItem('multiLoanCalculator');
-      setScenarios([defaultScenario]);
-      setActiveScenarioId(defaultScenario.id);
+      const newDefaultScenario = createDefaultScenario();
+      setScenarios([newDefaultScenario]);
+      setActiveScenarioId(ALL_SCENARIO_ID); // Reset to ALL scenario
       setPaymentStrategy('avalanche');
     }
   };
@@ -652,6 +770,11 @@ function App() {
   };
 
   const advanceLoansOneMonth = () => {
+    if (activeScenarioId === ALL_SCENARIO_ID) {
+      alert('Cannot advance months for ALL scenario. Please select a specific scenario.');
+      return;
+    }
+    
     // Only update loans in the active scenario
     const updatedScenarios = scenarios.map(scenario => {
       if (scenario.id !== activeScenarioId) return scenario;
@@ -739,9 +862,9 @@ function App() {
       
       {/* Scenario Manager */}
       <ScenarioManager 
-        scenarios={scenarios}
+        scenarios={scenariosWithAll}
         activeScenarioId={activeScenarioId}
-        onSelectScenario={setActiveScenarioId}
+        onSelectScenario={handleSelectScenario}
         onAddScenario={addScenario}
         onDuplicateScenario={duplicateScenario}
         onDeleteScenario={deleteScenario}
@@ -756,7 +879,8 @@ function App() {
           onUpdateLoan={updateLoan}
           onDuplicateLoan={duplicateLoan}
           onDeleteLoan={deleteLoan}
-          onAdvanceMonth={advanceLoansOneMonth}  // Add this line
+          onAdvanceMonth={advanceLoansOneMonth}
+          isReadOnly={activeScenario.isReadOnly}
         />
       </div>
       
