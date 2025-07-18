@@ -240,7 +240,7 @@ const LoanForm = ({
                         onBlur={(e) => handleInputBlur(loanId, 'rate', e.target.value)}
                         className="border rounded px-2 py-1 w-32 pr-6"
                       />
-                      <span className="absolute right-2 top-1/2 transform -translate-y-1/2">%</span>
+                      <span className="absolute right-5 top-1/2 transform -translate-y-1/2 text-gray-500">%</span>
                     </div>
                   </td>
                   <td className="p-2">

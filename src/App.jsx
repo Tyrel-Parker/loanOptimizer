@@ -27,20 +27,30 @@ import { exportScenariosToFile, importScenariosFromFile } from './utils/importEx
 // Define default loan and scenario
 const defaultLoan = {
   id: Date.now(),
-  name: "Loan 1",
-  principal: 10000,
+  name: "Car",
+  principal: 30000,
   rate: 5,
-  term: 120, // 10 years in months
+  term: 84, // years in months
+  endDate: calculateEndDate(120).toISOString().split('T')[0], // Format as YYYY-MM-DD
+  extraPayment: 0
+};
+
+const defaultLoan1 = {
+  id: Date.now(),
+  name: "Personal Loan",
+  principal: 10000,
+  rate: 12,
+  term: 60, // years in months
   endDate: calculateEndDate(120).toISOString().split('T')[0], // Format as YYYY-MM-DD
   extraPayment: 0
 };
 
 const defaultScenario = {
   id: Date.now(),
-  name: "Scenario 1",
-  loans: [defaultLoan],
-  totalBudget: 0,
-  refinanceRate: 0
+  name: "Sample",
+  loans: [defaultLoan, defaultLoan1],
+  totalBudget: 800,
+  refinanceRate: 7.8
 };
 
 function App() {
