@@ -1,4 +1,8 @@
-// Add isReadOnly prop to LoanForm component
+import React, { useState, useEffect } from 'react';
+import { formatCurrency } from '../utils/formatters';
+import { calculateMonthlyPayment } from '../utils/calculators';
+import { Copy, Plus, Trash, Calendar } from './icons/Icons.jsx';
+
 const LoanForm = ({ 
   loans, 
   onAddLoan, 
@@ -8,8 +12,24 @@ const LoanForm = ({
   onAdvanceMonth,
   isReadOnly = false // New prop to indicate read-only mode
 }) => {
-  // ... existing state and functions ...
-
+  // State to track raw input values before conversion
+  const [inputValues, setInputValues] = useState({});
+  
+  // Initialize input values from props
+  useEffect(() => {
+    if (loans && Array.isArray(loans)) {
+      const initialValues = {};
+      loans.forEach(loan => {
+        if (loan && loan.id) {
+          initialValues[`${loan.id}-term`] = loan.term || '';
+          initialValues[`${loan.id}-principal`] = loan.principal || '';
+          initialValues[`${loan.id}-rate`] = loan.rate || '';
+        }
+      });
+      setInputValues(initialValues);
+    }
+  }, []);
+  
   // Add a helper to show read-only message when trying to edit
   const handleReadOnlyAction = (actionName) => {
     if (isReadOnly) {
@@ -49,7 +69,8 @@ const LoanForm = ({
       onUpdateLoan(loanId, field, value);
     }
   };
-
+  
+  // Update local state when a specific loan field changes
   const handleInputChange = (loanId, field, value) => {
     if (isReadOnly) return; // Don't update local state in read-only mode
     
@@ -58,31 +79,87 @@ const LoanForm = ({
       [`${loanId}-${field}`]: value
     }));
     
+    // For loan name, update immediately
     if (field === 'name') {
       onUpdateLoan(loanId, field, value);
     }
   };
-
+  
+  // Handle blur events to update parent component
   const handleInputBlur = (loanId, field, value) => {
     if (isReadOnly) return; // Don't process blur events in read-only mode
     
+    // If the value is empty, don't update the parent yet
     if (value === '') return;
     
     try {
       if (field === 'term' || field === 'principal' || field === 'rate') {
+        // Parse numeric values
         const numValue = parseFloat(value);
         if (!isNaN(numValue)) {
           onUpdateLoan(loanId, field, numValue);
         }
       } else {
+        // For non-numeric fields
         onUpdateLoan(loanId, field, value);
       }
     } catch (error) {
       console.error(`Error updating ${field}:`, error);
     }
   };
+  
+  // Format the end date to show month and year in a readable format
+  const formatEndDateDisplay = (dateString) => {
+    if (!dateString) return "";
+    
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) return "";
+      
+      // Format as "Month Year" (e.g., "October 2033")
+      return date.toLocaleDateString('en-US', { 
+        month: 'long', 
+        year: 'numeric' 
+      });
+    } catch (error) {
+      console.error("Error formatting date:", error);
+      return "";
+    }
+  };
 
-  // ... existing calculation functions ...
+  // Calculate totals
+  const calculateTotals = () => {
+    if (!Array.isArray(loans)) return { totalPrincipal: 0, totalMonthlyPayment: 0 };
+    
+    let totalPrincipal = 0;
+    let totalMonthlyPayment = 0;
+    
+    loans.forEach(loan => {
+      if (!loan) return;
+      
+      // Add principal
+      const principal = loan.principal || 0;
+      totalPrincipal += principal;
+      
+      // Calculate and add monthly payment
+      try {
+        if (principal > 0 && loan.rate > 0 && loan.term > 0) {
+          const payment = calculateMonthlyPayment(principal, loan.rate, loan.term);
+          totalMonthlyPayment += payment;
+        }
+      } catch (error) {
+        console.error("Error calculating payment for total:", error);
+      }
+    });
+    
+    return { totalPrincipal, totalMonthlyPayment };
+  };
+  
+  // Get totals
+  const { totalPrincipal, totalMonthlyPayment } = calculateTotals();
+
+  // Default values for rendering - prevents errors if loans is not an array
+  const loansToRender = Array.isArray(loans) ? loans : [];
 
   return (
     <section className="bg-white rounded-lg shadow-md p-4">
@@ -151,9 +228,41 @@ const LoanForm = ({
           </thead>
           <tbody>
             {loansToRender.map(loan => {
-              // ... existing loan data extraction ...
+              // Use safe values if loan properties are undefined
+              const loanId = loan?.id;
+              const name = loan?.name || "";
+              const principal = loan?.principal;
+              const rate = loan?.rate;
+              const term = loan?.term;
+              const endDate = loan?.endDate;
               
-              if (!loanId) return null;
+              // Use the local input value if it exists, otherwise use the prop value
+              const principalInput = inputValues[`${loanId}-principal`] !== undefined 
+                ? inputValues[`${loanId}-principal`] 
+                : principal;
+                
+              const rateInput = inputValues[`${loanId}-rate`] !== undefined 
+                ? inputValues[`${loanId}-rate`] 
+                : rate;
+                
+              const termInput = inputValues[`${loanId}-term`] !== undefined 
+                ? inputValues[`${loanId}-term`] 
+                : term;
+              
+              // Calculate monthly payment safely
+              let monthlyPayment = 0;
+              try {
+                if (principal > 0 && term > 0) {
+                  monthlyPayment = calculateMonthlyPayment(principal, rate, term);
+                }
+              } catch (error) {
+                console.error("Error calculating payment:", error);
+              }
+              
+              // Format the payoff date as Month Year
+              const formattedEndDate = formatEndDateDisplay(endDate);
+              
+              if (!loanId) return null; // Skip rendering if loan id is missing
               
               return (
                 <tr key={loanId} className={`border-b ${isReadOnly ? 'bg-gray-50' : 'hover:bg-gray-50'}`}>
@@ -212,6 +321,7 @@ const LoanForm = ({
                   </td>
                   <td className="p-2">
                     <div className="flex flex-col gap-1">
+                      {/* Display formatted date for easier reading */}
                       <div className="text-sm">
                         {formattedEndDate}
                       </div>
@@ -250,3 +360,5 @@ const LoanForm = ({
     </section>
   );
 };
+
+export default LoanForm;

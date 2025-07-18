@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import ScenarioManager from './components/ScenarioManager.jsx';
 import LoanForm from './components/LoanForm.jsx';
 import PaymentOptimization from './components/PaymentOptimization.jsx';
@@ -61,68 +61,113 @@ const createDefaultScenario = () => ({
 
 // Function to create the ALL scenario
 const createAllScenario = (scenarios) => {
-  // Collect all loans from all scenarios (except the ALL scenario itself)
-  const allLoans = [];
-  let combinedBudget = 0;
-  let averageRefinanceRate = 0;
-  let rateCount = 0;
-  
-  scenarios.forEach(scenario => {
-    if (scenario.id === ALL_SCENARIO_ID) return; // Skip the ALL scenario itself
+  try {
+    // Collect all loans from all scenarios (except the ALL scenario itself)
+    const allLoans = [];
+    let combinedBudget = 0;
+    let averageRefinanceRate = 0;
+    let rateCount = 0;
     
-    // Add all loans from this scenario with unique IDs and scenario prefixes
-    scenario.loans.forEach(loan => {
-      const prefixedLoan = {
-        ...loan,
-        id: `${scenario.id}_${loan.id}`, // Ensure unique ID by prefixing with scenario ID
-        name: `[${scenario.name}] ${loan.name}` // Prefix name with scenario name
-      };
-      allLoans.push(prefixedLoan);
-    });
+    if (Array.isArray(scenarios)) {
+      scenarios.forEach(scenario => {
+        if (scenario && scenario.id !== ALL_SCENARIO_ID && Array.isArray(scenario.loans)) {
+          // Add all loans from this scenario with unique IDs and scenario prefixes
+          scenario.loans.forEach(loan => {
+            if (loan && loan.id) {
+              const prefixedLoan = {
+                ...loan,
+                id: `${scenario.id}_${loan.id}`, // Ensure unique ID by prefixing with scenario ID
+                name: `[${scenario.name || 'Unknown'}] ${loan.name || 'Unknown Loan'}` // Prefix name with scenario name
+              };
+              allLoans.push(prefixedLoan);
+            }
+          });
+          
+          // Accumulate budgets and refinance rates for averaging
+          if (scenario.totalBudget && scenario.totalBudget > 0) {
+            combinedBudget += scenario.totalBudget;
+          }
+          if (scenario.refinanceRate && scenario.refinanceRate > 0) {
+            averageRefinanceRate += scenario.refinanceRate;
+            rateCount++;
+          }
+        }
+      });
+    }
     
-    // Accumulate budgets and refinance rates for averaging
-    if (scenario.totalBudget > 0) {
-      combinedBudget += scenario.totalBudget;
-    }
-    if (scenario.refinanceRate > 0) {
-      averageRefinanceRate += scenario.refinanceRate;
-      rateCount++;
-    }
-  });
-  
-  // Calculate average refinance rate
-  const finalRefinanceRate = rateCount > 0 ? averageRefinanceRate / rateCount : 0;
-  
-  return {
-    id: ALL_SCENARIO_ID,
-    name: ALL_SCENARIO_NAME,
-    loans: allLoans,
-    totalBudget: combinedBudget,
-    refinanceRate: Math.round(finalRefinanceRate * 100) / 100, // Round to 2 decimal places
-    isReadOnly: true // Flag to indicate this is a special scenario
-  };
+    // Calculate average refinance rate
+    const finalRefinanceRate = rateCount > 0 ? averageRefinanceRate / rateCount : 0;
+    
+    return {
+      id: ALL_SCENARIO_ID,
+      name: ALL_SCENARIO_NAME,
+      loans: allLoans,
+      totalBudget: combinedBudget,
+      refinanceRate: Math.round(finalRefinanceRate * 100) / 100, // Round to 2 decimal places
+      isReadOnly: true // Flag to indicate this is a special scenario
+    };
+  } catch (error) {
+    console.error('Error in createAllScenario:', error);
+    // Return a safe fallback
+    return {
+      id: ALL_SCENARIO_ID,
+      name: ALL_SCENARIO_NAME,
+      loans: [],
+      totalBudget: 0,
+      refinanceRate: 0,
+      isReadOnly: true
+    };
+  }
 };
 
 function App() {
   // State
   const [scenarios, setScenarios] = useState([createDefaultScenario()]);
-  const [activeScenarioId, setActiveScenarioId] = useState(ALL_SCENARIO_ID); // Start with ALL scenario
+  const [activeScenarioId, setActiveScenarioId] = useState(() => {
+    // Start with the first regular scenario initially, we'll switch to ALL after load
+    const defaultScenario = createDefaultScenario();
+    return defaultScenario.id;
+  });
   const [paymentStrategy, setPaymentStrategy] = useState('avalanche'); // 'avalanche' or 'snowball'
   
+  // Separate state for ALL scenario analysis values
+  const [allScenarioAnalysis, setAllScenarioAnalysis] = useState({
+    totalBudget: 0,
+    refinanceRate: 0
+  });
+  
   // Computed property to get scenarios including the ALL scenario
-  const scenariosWithAll = React.useMemo(() => {
-    const regularScenarios = scenarios.filter(s => s.id !== ALL_SCENARIO_ID);
-    const allScenario = createAllScenario(regularScenarios);
-    return [allScenario, ...regularScenarios];
+  const scenariosWithAll = useMemo(() => {
+    try {
+      const regularScenarios = scenarios.filter(s => s.id !== ALL_SCENARIO_ID);
+      const allScenario = createAllScenario(regularScenarios);
+      return [allScenario, ...regularScenarios];
+    } catch (error) {
+      console.error('Error creating scenariosWithAll:', error);
+      return scenarios; // Fallback to regular scenarios
+    }
   }, [scenarios]);
 
   // Get the active scenario (with special handling for ALL scenario)
-  const activeScenario = React.useMemo(() => {
-    if (activeScenarioId === ALL_SCENARIO_ID) {
-      return createAllScenario(scenarios.filter(s => s.id !== ALL_SCENARIO_ID));
+  const activeScenario = useMemo(() => {
+    try {
+      if (activeScenarioId === ALL_SCENARIO_ID) {
+        const regularScenarios = scenarios.filter(s => s.id !== ALL_SCENARIO_ID);
+        const baseAllScenario = createAllScenario(regularScenarios);
+        // Override with analysis values for budget and refinance rate
+        return {
+          ...baseAllScenario,
+          totalBudget: allScenarioAnalysis.totalBudget,
+          refinanceRate: allScenarioAnalysis.refinanceRate
+        };
+      }
+      const foundScenario = scenarios.find(s => s.id === activeScenarioId);
+      return foundScenario || scenarios[0];
+    } catch (error) {
+      console.error('Error getting active scenario:', error);
+      return scenarios[0] || createDefaultScenario(); // Fallback
     }
-    return scenarios.find(s => s.id === activeScenarioId) || scenarios[0];
-  }, [activeScenarioId, scenarios]);
+  }, [activeScenarioId, scenarios, allScenarioAnalysis]);
   
   // Load data from localStorage on initial render
   useEffect(() => {
@@ -130,17 +175,27 @@ function App() {
     if (savedData) {
       try {
         const parsedData = JSON.parse(savedData);
-        setScenarios(parsedData.scenarios);
+        setScenarios(parsedData.scenarios || [createDefaultScenario()]);
         // Ensure the activeScenarioId is valid - if it's not ALL_SCENARIO and not in scenarios, default to ALL_SCENARIO
         const validScenarioId = parsedData.activeScenarioId === ALL_SCENARIO_ID || 
-                               parsedData.scenarios.find(s => s.id === parsedData.activeScenarioId) 
+                               (parsedData.scenarios && parsedData.scenarios.find(s => s.id === parsedData.activeScenarioId)) 
                                ? parsedData.activeScenarioId 
                                : ALL_SCENARIO_ID;
         setActiveScenarioId(validScenarioId);
         setPaymentStrategy(parsedData.paymentStrategy || 'avalanche');
+        // Load ALL scenario analysis state
+        if (parsedData.allScenarioAnalysis) {
+          setAllScenarioAnalysis(parsedData.allScenarioAnalysis);
+        }
       } catch (e) {
         console.error('Error loading saved data:', e);
+        // Set defaults on error
+        setScenarios([createDefaultScenario()]);
+        setActiveScenarioId(ALL_SCENARIO_ID);
       }
+    } else {
+      // No saved data, default to ALL scenario
+      setActiveScenarioId(ALL_SCENARIO_ID);
     }
   }, []);
   
@@ -149,10 +204,11 @@ function App() {
     const dataToSave = {
       scenarios,
       activeScenarioId, // Keep the actual activeScenarioId, including ALL_SCENARIO_ID
-      paymentStrategy
+      paymentStrategy,
+      allScenarioAnalysis
     };
     localStorage.setItem('multiLoanCalculator', JSON.stringify(dataToSave));
-  }, [scenarios, activeScenarioId, paymentStrategy]);
+  }, [scenarios, activeScenarioId, paymentStrategy, allScenarioAnalysis]);
   
   // Helper function for debouncing
   const debounce = (func, delay) => {
@@ -244,10 +300,19 @@ function App() {
   
   // Update a scenario field with improved error handling
   const updateScenario = useCallback((field, value) => {
+    // Allow editing budget, refinance rate for ALL scenario
     if (activeScenarioId === ALL_SCENARIO_ID) {
-      // Don't allow editing of the ALL scenario
-      console.warn('Cannot edit the ALL scenario');
-      return;
+      if (field === 'totalBudget' || field === 'refinanceRate') {
+        // Update the separate ALL scenario analysis state
+        setAllScenarioAnalysis(prev => ({
+          ...prev,
+          [field]: value
+        }));
+        return;
+      } else {
+        console.warn('Cannot edit other fields of the ALL scenario');
+        return;
+      }
     }
     
     try {
