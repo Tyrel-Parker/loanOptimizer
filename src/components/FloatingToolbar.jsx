@@ -89,37 +89,37 @@ const FloatingToolbar = ({
           <div className="flex flex-col gap-2">
             <button 
               onClick={() => scrollToSection('scenarios-section')}
-              className="text-left text-blue-600 hover:text-blue-800"
+              className="text-left text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100"
             >
               Scenarios
             </button>
             <button 
               onClick={() => scrollToSection('loans-section')}
-              className="text-left text-blue-600 hover:text-blue-800"
+              className="text-left text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100"
             >
               Loans
             </button>
             <button 
               onClick={() => scrollToSection('payment-optimization-section')}
-              className="text-left text-blue-600 hover:text-blue-800"
+              className="text-left text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100"
             >
               Payment Optimization
             </button>
             <button 
               onClick={() => scrollToSection('refinance-section')}
-              className="text-left text-blue-600 hover:text-blue-800"
+              className="text-left text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100"
             >
               Refinance Analysis
             </button>
             <button 
               onClick={() => scrollToSection('combined-optimization-section')}
-              className="text-left text-blue-600 hover:text-blue-800"
+              className="text-left text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100"
             >
               Refinanced Optimization
             </button>
             <button 
               onClick={() => scrollToSection('summary-section')}
-              className="text-left text-blue-600 hover:text-blue-800"
+              className="text-left text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100"
             >
               Summary
             </button>
