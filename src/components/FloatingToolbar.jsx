@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { formatCurrency } from '../utils/formatters';
+import { HelpCircle } from './icons/Icons';
+import HelpModal from './HelpModal';
 
 const FloatingToolbar = ({ 
   activeScenario,
@@ -13,6 +15,7 @@ const FloatingToolbar = ({
   const [budgetInput, setBudgetInput] = useState(activeScenario?.totalBudget || '');
   const [refinanceInput, setRefinanceInput] = useState(activeScenario?.refinanceRate || '');
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isHelpOpen, setIsHelpOpen] = useState(false);
   
   // Check if this is the ALL scenario
   const isAllScenario = activeScenario?.id === 'ALL_SCENARIO';
@@ -49,10 +52,18 @@ const FloatingToolbar = ({
   const minimumRequired = (activeScenario?.loans || []).reduce(
     (sum, loan) => {
       try {
-        const monthlyPayment = loan.principal && loan.rate && loan.term ?
-          (loan.principal * (loan.rate / 100 / 12) * Math.pow(1 + loan.rate / 100 / 12, loan.term)) /
-          (Math.pow(1 + loan.rate / 100 / 12, loan.term) - 1) :
-          0;
+        let monthlyPayment = 0;
+        if (loan.principal && loan.rate) {
+          if (loan.term === 0) {
+            // Credit card - minimum payment
+            monthlyPayment = Math.max(loan.principal * 0.02, 25);
+            monthlyPayment = Math.min(monthlyPayment, loan.principal);
+          } else if (loan.term > 0) {
+            // Regular loan
+            monthlyPayment = (loan.principal * (loan.rate / 100 / 12) * Math.pow(1 + loan.rate / 100 / 12, loan.term)) /
+              (Math.pow(1 + loan.rate / 100 / 12, loan.term) - 1);
+          }
+        }
         return sum + monthlyPayment;
       } catch (error) {
         return sum;
@@ -84,9 +95,19 @@ const FloatingToolbar = ({
       </button>
       
       <div className={`p-4 ${isCollapsed ? 'hidden' : 'block'}`}>
-        <h2 className="text-lg font-bold mb-4">
-          {isAllScenario ? 'ALL Scenarios View' : 'Calculator Controls'}
-        </h2>
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-lg font-bold">
+            {isAllScenario ? 'ALL Scenarios View' : 'Calculator Controls'}
+          </h2>
+          <button
+            onClick={() => setIsHelpOpen(true)}
+            className="flex items-center gap-1 px-2 py-1 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded transition-colors"
+            title="Open Help Guide"
+          >
+            <HelpCircle className="h-4 w-4" />
+            <span className="text-sm">Help</span>
+          </button>
+        </div>
         
         {isAllScenario && (
           <div className="mb-4 p-2 bg-purple-50 rounded text-sm text-purple-700">
@@ -237,6 +258,9 @@ const FloatingToolbar = ({
           )}
         </div>
       </div>
+
+      {/* Help Modal */}
+      <HelpModal isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} />
     </div>
   );
 };

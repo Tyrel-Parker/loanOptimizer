@@ -7,13 +7,30 @@
  * @param {number} term - Loan term in months
  * @returns {number} - Monthly payment amount
  */
-export const calculateMonthlyPayment = (principal, rate, term) => {
-  if (!principal || principal <= 0) return 0;
-  if (!term || term <= 0) return 0;
+export const calculateMonthlyPayment = (principal, rate, term, isCreditCard = false, ccSettings = {}) => {
+  if (principal <= 0 || rate < 0) return 0;
+  
+  // If term is 0 or explicitly marked as credit card, calculate minimum payment
+  if (term === 0 || isCreditCard) {
+    const defaultSettings = {
+      method: 'percentage',
+      percentageRate: 2,
+      fixedAmount: 25,
+      minimumFloor: 25
+    };
+    
+    const settings = { ...defaultSettings, ...ccSettings };
+    return calculateCreditCardMinimum(principal, rate, settings.method, settings.percentageRate, settings.fixedAmount, settings.minimumFloor);
+  }
+  
+  // Regular loan calculation
+  if (rate === 0) return principal / term;
   
   const monthlyRate = rate / 100 / 12;
-  if (monthlyRate === 0) return principal / term;
-  return principal * monthlyRate * Math.pow(1 + monthlyRate, term) / (Math.pow(1 + monthlyRate, term) - 1);
+  const payment = (principal * monthlyRate * Math.pow(1 + monthlyRate, term)) / 
+                  (Math.pow(1 + monthlyRate, term) - 1);
+  
+  return payment;
 };
 
 /**
@@ -56,121 +73,152 @@ export const calculateTimeToPayoff = (principal, rate, payment) => {
   return Math.ceil(numerator / denominator);
 };
 
+/** used to handle credit cards */
+export const isCreditCardLoan = (loan) => {
+  return loan.term === 0 || loan.term === null || loan.term === undefined;
+};
+
+// Credit card minimum payment calculation
+export const calculateCreditCardMinimum = (balance, apr, method = 'percentage', percentageRate = 2, fixedAmount = 25, minimumFloor = 25) => {
+  if (balance <= 0) return 0;
+  
+  const monthlyInterestRate = apr / 100 / 12;
+  const monthlyInterest = balance * monthlyInterestRate;
+  
+  let minimumPayment = 0;
+  
+  switch (method) {
+    case 'percentage':
+      // Most common: percentage of balance (usually 2%)
+      minimumPayment = balance * (percentageRate / 100);
+      break;
+      
+    case 'fixed_plus_interest':
+      // Fixed amount plus interest
+      minimumPayment = fixedAmount + monthlyInterest;
+      break;
+      
+    case 'interest_plus_principal':
+      // Interest plus 1% of principal (common method)
+      minimumPayment = monthlyInterest + (balance * 0.01);
+      break;
+      
+    default:
+      minimumPayment = balance * 0.02; // Default to 2%
+  }
+  
+  // Apply minimum floor (usually $25-35)
+  minimumPayment = Math.max(minimumPayment, minimumFloor);
+  
+  // Don't exceed the balance
+  minimumPayment = Math.min(minimumPayment, balance);
+  
+  return minimumPayment;
+};
+
+// Function to estimate payoff time for credit card with minimum payments
+export const estimateCreditCardPayoffTime = (balance, apr, minimumPaymentRate = 2, minimumFloor = 25) => {
+  if (balance <= 0) return 0;
+  
+  let currentBalance = balance;
+  let months = 0;
+  const maxMonths = 600; // 50 years max to prevent infinite loops
+  
+  while (currentBalance > 0.01 && months < maxMonths) {
+    months++;
+    
+    const monthlyInterestRate = apr / 100 / 12;
+    const interestPayment = currentBalance * monthlyInterestRate;
+    
+    const minimumPayment = Math.max(currentBalance * (minimumPaymentRate / 100), minimumFloor);
+    const principalPayment = minimumPayment - interestPayment;
+    
+    // If minimum payment doesn't cover interest, the debt will never be paid off
+    if (principalPayment <= 0) {
+      return Infinity;
+    }
+    
+    currentBalance -= principalPayment;
+    
+    if (currentBalance < 0.01) {
+      currentBalance = 0;
+    }
+  }
+  
+  return months === maxMonths ? Infinity : months;
+};
+
 /**
  * Calculate amortization schedule with optional extra payments
  * @param {Object} loan - Loan object with principal, rate and term properties
  * @param {number} extraPayment - Extra payment amount on top of required payment
  * @returns {Object} - Amortization schedule and payoff details
  */
-export const calculateAmortizationSchedule = (loan, extraPayment = 0) => {
+export const calculateAmortizationSchedule = (loan, extraPayment = 0, ccSettings = {}) => {
   const { principal, rate, term } = loan;
   
-  if (!principal || principal <= 0) {
-    return {
-      schedule: [],
-      payoffMonths: 0,
-      totalInterest: 0,
-      monthsSaved: 0,
-      interestSaved: 0
-    };
+  if (principal <= 0 || rate < 0) {
+    return { payoffMonths: 0, totalInterest: 0, totalPayments: 0 };
   }
   
-  const monthlyRate = rate / 100 / 12;
-  const requiredPayment = calculateMonthlyPayment(principal, rate, term);
-  
-  let balance = principal;
+  const isCreditCard = term === 0;
+  let currentBalance = principal;
   let totalInterest = 0;
   let months = 0;
-  const schedule = [];
+  const maxMonths = isCreditCard ? 600 : term * 2; // Prevent infinite loops for CC
   
-  // Handle zero interest edge case
-  if (rate === 0) {
-    const actualPayment = requiredPayment + extraPayment;
-    months = Math.ceil(principal / actualPayment);
-    
-    // Generate complete amortization schedule for 0% loan
-    let remainingBalance = principal;
-    for (let i = 1; i <= months; i++) {
-      let paymentForMonth = actualPayment;
-      
-      // Adjust final payment if needed
-      if (remainingBalance < paymentForMonth) {
-        paymentForMonth = remainingBalance;
-      }
-      
-      // All payment goes to principal when rate is 0
-      schedule.push({
-        month: i,
-        payment: paymentForMonth,
-        principal: paymentForMonth,
-        interest: 0,
-        balance: Math.max(0, remainingBalance - paymentForMonth),
-        totalInterest: 0
-      });
-      
-      remainingBalance = Math.max(0, remainingBalance - paymentForMonth);
-      if (remainingBalance === 0) break;
-    }
-    
-    return {
-      schedule,
-      payoffMonths: months,
-      totalInterest: 0,
-      monthsSaved: term - months,
-      interestSaved: 0
-    };
-  }
-
-  // Calculate amortization with interest
-  while (balance > 0 && months < term * 2) { // Safety limit to prevent infinite loops
+  while (currentBalance > 0.01 && months < maxMonths) {
     months++;
-    const interestPayment = balance * monthlyRate;
-    let principalPayment = requiredPayment - interestPayment;
-    let actualPayment = requiredPayment;
     
-    // Handle negative amortization if payment is less than interest
-    if (principalPayment < 0) {
-      principalPayment = 0;
-      actualPayment = interestPayment;
-    }
-    
-    if (extraPayment > 0) {
-      principalPayment += extraPayment;
-      actualPayment += extraPayment;
-    }
-    
-    // Adjust for final payment
-    if (principalPayment > balance) {
-      principalPayment = balance;
-      actualPayment = balance + interestPayment;
-    }
-    
-    balance -= principalPayment;
+    // Calculate interest for this month
+    const monthlyInterestRate = rate / 100 / 12;
+    const interestPayment = currentBalance * monthlyInterestRate;
     totalInterest += interestPayment;
     
-    schedule.push({
-      month: months,
-      payment: actualPayment,
-      principal: principalPayment,
-      interest: interestPayment,
-      balance,
-      totalInterest
-    });
+    // Calculate payment
+    let payment;
+    if (isCreditCard) {
+      payment = calculateCreditCardMinimum(currentBalance, rate, ccSettings.method, ccSettings.percentageRate, ccSettings.fixedAmount, ccSettings.minimumFloor);
+    } else {
+      payment = calculateMonthlyPayment(principal, rate, term);
+    }
     
-    if (balance <= 0) break;
+    // Add extra payment
+    payment += extraPayment;
+    
+    // Ensure we don't pay more than the balance
+    payment = Math.min(payment, currentBalance + interestPayment);
+    
+    // Calculate principal payment
+    const principalPayment = payment - interestPayment;
+    
+    // Update balance
+    currentBalance -= principalPayment;
+    
+    // Safety check for very small balances
+    if (currentBalance < 0.01) {
+      currentBalance = 0;
+    }
   }
   
-  // Calculate what the total interest would have been with just required payments
-  const originalTotalInterest = calculateTotalInterest(principal, requiredPayment, term);
-  const interestSaved = originalTotalInterest - totalInterest;
-  const monthsSaved = term - months;
+  const totalPayments = totalInterest + principal;
+  
+  // Calculate savings compared to minimum payments only
+  let interestSaved = 0;
+  let monthsSaved = 0;
+  
+  if (extraPayment > 0) {
+    const baseSchedule = calculateAmortizationSchedule({ ...loan }, 0, ccSettings);
+    interestSaved = baseSchedule.totalInterest - totalInterest;
+    monthsSaved = baseSchedule.payoffMonths - months;
+  }
   
   return {
-    schedule,
     payoffMonths: months,
     totalInterest,
-    monthsSaved,
-    interestSaved
+    totalPayments,
+    interestSaved,
+    monthsSaved
   };
 };
 

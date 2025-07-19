@@ -50,11 +50,22 @@ const createDefaultPersonalLoan = () => ({
   extraPayment: 0
 });
 
+// Function to create a default credit card with unique ID
+const createDefaultCreditCard = () => ({
+  id: Date.now() + Math.random() * 1000 + 3, // Ensure unique ID
+  name: "Credit Card",
+  principal: 5000,
+  rate: 18.99,
+  term: 0, // 0 indicates credit card
+  endDate: "", // No end date for credit cards
+  extraPayment: 0
+});
+
 // Function to create a default scenario with unique IDs
 const createDefaultScenario = () => ({
   id: Date.now() + Math.random() * 1000 + 2,
   name: "Sample",
-  loans: [createDefaultCarLoan(), createDefaultPersonalLoan()],
+  loans: [createDefaultCarLoan(), createDefaultPersonalLoan(), createDefaultCreditCard()],
   totalBudget: 800,
   refinanceRate: 7.8
 });
@@ -346,15 +357,35 @@ function App() {
     
     const updatedScenarios = scenarios.map(scenario => {
       if (scenario.id === activeScenarioId) {
-        const newLoan = {
-          id: Date.now(),
-          name: `Loan ${scenario.loans.length + 1}`,
-          principal: 10000,
-          rate: 5,
-          term: 120,
-          endDate: calculateEndDate(120).toISOString().split('T')[0],
-          extraPayment: 0
-        };
+        // Determine what type of loan to add based on existing loans
+        const hasRegularLoans = scenario.loans.some(loan => loan.term > 0);
+        const hasCreditCards = scenario.loans.some(loan => loan.term === 0);
+        
+        let newLoan;
+        if (!hasCreditCards && hasRegularLoans) {
+          // Add a credit card if they don't have one
+          newLoan = {
+            id: Date.now(),
+            name: "Credit Card",
+            principal: 5000,
+            rate: 18.99,
+            term: 0,
+            endDate: "",
+            extraPayment: 0
+          };
+        } else {
+          // Add a regular loan
+          newLoan = {
+            id: Date.now(),
+            name: `Loan ${scenario.loans.length + 1}`,
+            principal: 10000,
+            rate: 5,
+            term: 120,
+            endDate: calculateEndDate(120).toISOString().split('T')[0],
+            extraPayment: 0
+          };
+        }
+        
         return {
           ...scenario,
           loans: [...scenario.loans, newLoan]
@@ -846,8 +877,8 @@ function App() {
       
       // Process each loan in the active scenario
       const updatedLoans = scenario.loans.map(loan => {
-        // Skip processing if loan term is already 0 or invalid values
-        if (!loan || loan.term <= 0 || loan.principal <= 0 || !loan.rate) return loan;
+        // Skip processing if loan principal is already 0 or invalid values
+        if (!loan || loan.principal <= 0 || !loan.rate) return loan;
         
         try {
           // Calculate monthly interest
@@ -855,21 +886,36 @@ function App() {
           const monthlyInterest = loan.principal * monthlyInterestRate;
           
           // Calculate monthly payment
-          const monthlyPayment = calculateMonthlyPayment(loan.principal, loan.rate, loan.term);
+          let monthlyPayment;
+          if (loan.term === 0) {
+            // Credit card - use minimum payment (2% of balance, minimum $25)
+            monthlyPayment = Math.max(loan.principal * 0.02, 25);
+          } else {
+            // Regular loan
+            if (loan.term <= 0) return loan; // Skip if term is already 0 or negative
+            monthlyPayment = calculateMonthlyPayment(loan.principal, loan.rate, loan.term);
+          }
           
           // Calculate principal reduction
-          const principalPortion = monthlyPayment - monthlyInterest;
+          const principalPortion = Math.max(0, monthlyPayment - monthlyInterest);
           
           // Update principal
           const newPrincipal = Math.max(0, loan.principal - principalPortion);
           
-          // Update term
-          const newTerm = Math.max(0, loan.term - 1);
+          // Update term (only for regular loans, not credit cards)
+          let newTerm = loan.term;
+          let newEndDate = loan.endDate;
           
-          // Calculate new end date
-          const newEndDate = newTerm > 0 
-            ? calculateEndDate(newTerm).toISOString().split('T')[0]
-            : "";
+          if (loan.term > 0) {
+            // Regular loan - decrease term
+            newTerm = Math.max(0, loan.term - 1);
+            
+            // Calculate new end date
+            newEndDate = newTerm > 0 
+              ? calculateEndDate(newTerm).toISOString().split('T')[0]
+              : "";
+          }
+          // For credit cards (term === 0), term and endDate stay the same
           
           // Return updated loan
           return {

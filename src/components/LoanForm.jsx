@@ -143,8 +143,16 @@ const LoanForm = ({
       
       // Calculate and add monthly payment
       try {
-        if (principal > 0 && loan.rate > 0 && loan.term > 0) {
-          const payment = calculateMonthlyPayment(principal, loan.rate, loan.term);
+        if (principal > 0) {
+          let payment = 0;
+          if (loan.term === 0) {
+            // Credit card - calculate minimum payment
+            payment = Math.max(principal * 0.02, 25);
+            payment = Math.min(payment, principal);
+          } else if (loan.term > 0 && loan.rate > 0) {
+            // Regular loan
+            payment = calculateMonthlyPayment(principal, loan.rate, loan.term);
+          }
           totalMonthlyPayment += payment;
         }
       } catch (error) {
@@ -252,8 +260,16 @@ const LoanForm = ({
               // Calculate monthly payment safely
               let monthlyPayment = 0;
               try {
-                if (principal > 0 && term > 0) {
-                  monthlyPayment = calculateMonthlyPayment(principal, rate, term);
+                if (principal > 0) {
+                  if (term === 0) {
+                    // Credit card - calculate minimum payment (2% of balance, minimum $25)
+                    monthlyPayment = Math.max(principal * 0.02, 25);
+                    // Don't exceed the balance
+                    monthlyPayment = Math.min(monthlyPayment, principal);
+                  } else if (term > 0) {
+                    // Regular loan
+                    monthlyPayment = calculateMonthlyPayment(principal, rate, term);
+                  }
                 }
               } catch (error) {
                 console.error("Error calculating payment:", error);
@@ -317,18 +333,25 @@ const LoanForm = ({
                         isReadOnly ? 'bg-gray-100 cursor-not-allowed' : ''
                       }`}
                       readOnly={isReadOnly}
+                      placeholder="0 for CC"
+                      title="Enter term in months, or 0 for credit card"
                     />
                   </td>
                   <td className="p-2">
                     <div className="flex flex-col gap-1">
-                      {/* Display formatted date for easier reading */}
+                      {/* Display formatted date for easier reading or CC indicator */}
                       <div className="text-sm">
-                        {formattedEndDate}
+                        {term === 0 ? 'N/A (Credit Card)' : formattedEndDate}
                       </div>
                     </div>
                   </td>
                   <td className="p-2 font-medium">
-                    {formatCurrency ? formatCurrency(monthlyPayment) : "$" + monthlyPayment.toFixed(2)}
+                    <div className="flex flex-col">
+                      <span>{formatCurrency ? formatCurrency(monthlyPayment) : "$" + monthlyPayment.toFixed(2)}</span>
+                      {term === 0 && (
+                        <span className="text-xs text-blue-600">Min Payment (2%)</span>
+                      )}
+                    </div>
                   </td>
                   {!isReadOnly && (
                     <td className="p-2">
