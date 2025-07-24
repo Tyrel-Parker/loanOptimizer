@@ -1,0 +1,205 @@
+import React from 'react';
+import UnifiedLoanAnalysisCard from './UnifiedLoanAnalysisCard';
+import { formatCurrency } from '../utils/formatters';
+import { Plus, Calendar } from './icons/Icons';
+
+const UnifiedAnalysisView = ({ 
+  activeScenario,
+  paymentStrategy,
+  loanTileValues = [], // Use calculated tile values instead of raw analysis
+  onUpdateLoan,
+  onDuplicateLoan,
+  onDeleteLoan,
+  onAddLoan,
+  onAdvanceMonth
+}) => {
+  // Check if we have analysis data (budget or refinance rate)
+  const hasAnalysisData = activeScenario?.totalBudget > 0 || activeScenario?.refinanceRate > 0;
+  const hasLoans = loanTileValues.length > 0;
+
+  // Calculate summary data from tile values
+  const calculateSummary = () => {
+    if (!hasAnalysisData || loanTileValues.length === 0) return null;
+    
+    const extraPaymentTiles = loanTileValues.filter(lv => lv.showTiles.extraPayments && lv.tiles.extraPayments);
+    
+    if (extraPaymentTiles.length === 0) return null;
+    
+    const totalInterestSaved = extraPaymentTiles.reduce((sum, lv) => 
+      sum + (lv.tiles.extraPayments?.interestSaved || 0), 0
+    );
+    
+    const totalMonthsSaved = Math.max(...extraPaymentTiles.map(lv => 
+      lv.tiles.extraPayments?.monthsSaved || 0
+    ));
+    
+    const maxPayoffMonth = Math.max(...extraPaymentTiles.map(lv => 
+      lv.tiles.extraPayments?.payoffMonths || 0
+    ));
+    
+    const formatRelativeDate = (months) => {
+      if (!months) return "";
+      
+      try {
+        const now = new Date();
+        const futureDate = new Date(now);
+        futureDate.setMonth(now.getMonth() + months);
+        
+        return futureDate.toLocaleDateString('en-US', {
+          month: 'long',
+          year: 'numeric'
+        });
+      } catch (error) {
+        return "";
+      }
+    };
+    
+    return {
+      totalInterestSaved,
+      totalMonthsSaved,
+      finalPayoffDate: formatRelativeDate(maxPayoffMonth)
+    };
+  };
+  
+  const summary = calculateSummary();
+  
+  // Helper to get strategy name
+  const getStrategyName = () => {
+    return paymentStrategy === 'avalanche' 
+      ? 'Avalanche (Highest Interest First)' 
+      : 'Snowball (Smallest Balance First)';
+  };
+
+  return (
+    <section className="bg-white rounded-lg shadow-md p-6">
+      <div className="flex justify-between items-center mb-6">
+        <h2 className="text-xl font-semibold">Loan Management & Analysis</h2>
+        {!activeScenario.isReadOnly && (
+          <div className="flex gap-2">
+            <button
+              onClick={() => {
+                if (window.confirm("Advance all loans by one month? This will reduce principal and term for all loans in this scenario.")) {
+                  onAdvanceMonth();
+                }
+              }}
+              className="bg-blue-500 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-blue-600 transition-colors"
+              title="Advance all loans by one month payment"
+            >
+              <Calendar className="w-4 h-4" />
+              Next Month
+            </button>
+            <button
+              onClick={onAddLoan}
+              className="bg-green-500 text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-green-600 transition-colors"
+            >
+              <Plus className="w-4 h-4" />
+              Add Loan
+            </button>
+          </div>
+        )}
+      </div>
+      
+      {/* Show message if no analysis data, but still show loans */}
+      {!hasAnalysisData && (
+        <div className="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
+          <h3 className="font-medium text-blue-800 mb-2">💡 Enable Analysis</h3>
+          <p className="text-blue-700 text-sm mb-2">
+            Set your monthly budget and/or refinance rate in the floating toolbar to see:
+          </p>
+          <ul className="text-blue-600 text-sm space-y-1 ml-4">
+            <li>• Payment optimization strategies</li>
+            <li>• Interest savings calculations</li>
+            <li>• Refinancing recommendations</li>
+            <li>• Payoff timeline predictions</li>
+          </ul>
+        </div>
+      )}
+      
+      {/* Summary Header - only show if we have analysis data
+      {summary && hasAnalysisData && (
+        <div className="mb-8 p-6 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-center">
+            <div>
+              <div className="text-sm opacity-90 mb-1">Strategy</div>
+              <div className="text-lg font-bold">{getStrategyName()}</div>
+            </div>
+            <div>
+              <div className="text-sm opacity-90 mb-1">Total Interest Saved</div>
+              <div className="text-xl font-bold">{formatCurrency(summary.totalInterestSaved)}</div>
+            </div>
+            <div>
+              <div className="text-sm opacity-90 mb-1">Final Payoff Date</div>
+              <div className="text-lg font-bold">{summary.finalPayoffDate}</div>
+            </div>
+          </div>
+        </div>
+      )} */}
+      
+      {/* Show loans if they exist */}
+      {hasLoans ? (
+        <div className="space-y-6">
+          {(() => {
+            // Sort loans by payment priority when extra payments are being used
+            let sortedLoanTileValues = [...loanTileValues];
+            
+            if (hasAnalysisData) {
+              // Sort by payoff order (earlier payoff = higher priority)
+              sortedLoanTileValues.sort((a, b) => {
+                const aPayoffMonths = a.tiles.extraPayments?.payoffMonths || a.tiles.minimum?.payoffMonths || Infinity;
+                const bPayoffMonths = b.tiles.extraPayments?.payoffMonths || b.tiles.minimum?.payoffMonths || Infinity;
+                
+                // Sort by payoff months (ascending = highest priority first)
+                return aPayoffMonths - bPayoffMonths;
+              });
+            }
+            
+            return sortedLoanTileValues.map(loanTileValue => {
+              return (
+                <UnifiedLoanAnalysisCard
+                  key={loanTileValue.loan.id}
+                  loanTileValue={loanTileValue}  // Pass the calculated tile value object
+                  paymentStrategy={paymentStrategy}
+                  isReadOnly={activeScenario.isReadOnly}
+                  onUpdateLoan={onUpdateLoan}
+                  onDuplicateLoan={onDuplicateLoan}
+                  onDeleteLoan={onDeleteLoan}
+                />
+              );
+            });
+          })()}
+        </div>
+      ) : (
+        <div className="bg-gray-50 p-6 rounded-lg text-center">
+          <p className="text-gray-600 mb-2">No loans found in this scenario.</p>
+          {!activeScenario.isReadOnly && (
+            <p className="text-sm text-gray-500">
+              Click "Add Loan" to get started.
+            </p>
+          )}
+          {activeScenario.isReadOnly && (
+            <p className="text-sm text-gray-500">
+              Add loans to your individual scenarios to see them here.
+            </p>
+          )}
+        </div>
+      )}
+      
+      {/* Additional Insights - only show if we have analysis data and summary
+      {summary && hasAnalysisData && (
+        <div className="mt-8 p-4 bg-blue-50 rounded-lg">
+          <h3 className="font-semibold text-blue-800 mb-2">💡 Key Insights</h3>
+          <ul className="text-sm text-blue-700 space-y-1">
+            <li>• Using the {getStrategyName().toLowerCase()} saves you {formatCurrency(summary.totalInterestSaved)} in interest</li>
+            <li>• You'll be debt-free by {summary.finalPayoffDate}</li>
+            <li>• Consider the recommendations shown for each loan to maximize savings</li>
+            {activeScenario.refinanceRate > 0 && (
+              <li>• Refinancing opportunities are highlighted in purple sections</li>
+            )}
+          </ul>
+        </div>
+      )} */}
+    </section>
+  );
+};
+
+export default UnifiedAnalysisView;

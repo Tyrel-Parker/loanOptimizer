@@ -1,7 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { formatCurrency } from '../utils/formatters';
-import { HelpCircle } from './icons/Icons';
 import HelpModal from './HelpModal';
+
+// Simple HelpCircle icon component
+const HelpCircle = ({ className = "h-4 w-4" }) => (
+  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="10" strokeWidth="2" />
+    <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" strokeWidth="2" />
+    <circle cx="12" cy="17" r="1" fill="currentColor" />
+  </svg>
+);
 
 const FloatingToolbar = ({ 
   activeScenario,
@@ -39,11 +47,13 @@ const FloatingToolbar = ({
   
   // Handle refinance rate input changes
   const handleRefinanceChange = (value) => {
+    if (isAllScenario) return; // Prevent changes in ALL scenario
     setRefinanceInput(value);
   };
   
   // Handle refinance rate input blur
   const handleRefinanceBlur = () => {
+    if (isAllScenario) return; // Prevent changes in ALL scenario
     const parsedValue = parseFloat(refinanceInput) || 0;
     onUpdateScenario('refinanceRate', parsedValue);
   };
@@ -83,6 +93,25 @@ const FloatingToolbar = ({
     setIsCollapsed(!isCollapsed);
   };
 
+  // Get refinance rate display for ALL scenario
+  const getRefinanceRateDisplay = () => {
+    if (!isAllScenario) {
+      return refinanceInput;
+    }
+    
+    // For ALL scenario, show "Multiple rates" or list unique rates
+    const loans = activeScenario?.loans || [];
+    const uniqueRates = [...new Set(loans.map(loan => loan.sourceRefinanceRate).filter(rate => rate > 0))];
+    
+    if (uniqueRates.length === 0) {
+      return "No rates set";
+    } else if (uniqueRates.length === 1) {
+      return `${uniqueRates[0]}%`;
+    } else {
+      return "Multiple rates";
+    }
+  };
+
   return (
     <div className={`toolbar-fixed toolbar ${isCollapsed ? 'toolbar-collapsed' : 'toolbar-expanded'} bg-white rounded-lg shadow-lg transition-all duration-300`}>
       {/* Collapse toggle button */}
@@ -111,7 +140,8 @@ const FloatingToolbar = ({
         
         {isAllScenario && (
           <div className="mb-4 p-2 bg-purple-50 rounded text-sm text-purple-700">
-            <strong>Note:</strong> You can adjust budget and rates here for analysis. 
+            <strong>Note:</strong> You can adjust budget here for analysis. 
+            Refinance rates are set individually in each scenario and carried over automatically.
             Loan details cannot be edited in this view - switch to individual scenarios to modify loans.
           </div>
         )}
@@ -122,37 +152,19 @@ const FloatingToolbar = ({
           <div className="flex flex-col gap-2">
             <button 
               onClick={() => scrollToSection('scenarios-section')}
-              className="text-left text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100"
+              className="text-left text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-2 py-1 rounded transition-colors"
             >
               Scenarios
             </button>
             <button 
               onClick={() => scrollToSection('loans-section')}
-              className="text-left text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100"
+              className="text-left text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-2 py-1 rounded transition-colors"
             >
-              Loans
-            </button>
-            <button 
-              onClick={() => scrollToSection('payment-optimization-section')}
-              className="text-left text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100"
-            >
-              Payment Optimization
-            </button>
-            <button 
-              onClick={() => scrollToSection('refinance-section')}
-              className="text-left text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100"
-            >
-              Refinance Analysis
-            </button>
-            <button 
-              onClick={() => scrollToSection('combined-optimization-section')}
-              className="text-left text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100"
-            >
-              Refinanced Optimization
+              Loans & Analysis
             </button>
             <button 
               onClick={() => scrollToSection('summary-section')}
-              className="text-left text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100"
+              className="text-left text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-2 py-1 rounded transition-colors"
             >
               Summary
             </button>
@@ -202,20 +214,34 @@ const FloatingToolbar = ({
           {/* Refinance Rate */}
           <div className="mb-3">
             <label className="block text-sm mb-1">
-              Refinance Rate {isAllScenario && '(For Analysis)'}
+              Refinance Rate {isAllScenario && '(From Individual Scenarios)'}
             </label>
             <div className="relative">
               <input
                 type="text"
-                value={refinanceInput}
+                value={getRefinanceRateDisplay()}
                 onChange={(e) => handleRefinanceChange(e.target.value)}
                 onBlur={handleRefinanceBlur}
-                className="border rounded w-full px-2 py-1 pr-6 text-sm"
-                placeholder="Enter rate"
-                title={isAllScenario ? 'Set refinance rate for analyzing all loans' : 'Enter refinance rate'}
+                className={`border rounded w-full px-2 py-1 pr-6 text-sm ${
+                  isAllScenario 
+                    ? 'bg-gray-100 cursor-not-allowed text-gray-600' 
+                    : 'bg-white'
+                }`}
+                placeholder={isAllScenario ? "Set in individual scenarios" : "Enter rate"}
+                title={isAllScenario 
+                  ? 'Refinance rates are set individually in each scenario' 
+                  : 'Enter refinance rate'
+                }
+                readOnly={isAllScenario}
+                disabled={isAllScenario}
               />
               <span className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-500">%</span>
             </div>
+            {isAllScenario && (
+              <div className="text-xs text-gray-500 mt-1">
+                Set refinance rates in individual scenarios to see analysis
+              </div>
+            )}
           </div>
         </div>
         
