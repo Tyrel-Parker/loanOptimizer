@@ -530,6 +530,8 @@ function App() {
       const budget = parseFloat(totalBudget);
       if (isNaN(budget) || budget <= 0) return [];
       
+      console.log(`calculatePayoffSchedule: budget = ${budget}, loans count = ${loans.length}`);
+      
       // For ALL scenario, we need to use the original loan structure for calculations
       // but then map the results back to the prefixed IDs
       let loansForCalculation = loans;
@@ -548,8 +550,18 @@ function App() {
         });
       }
       
+      console.log('Loans for calculation:', loansForCalculation.map(loan => ({
+        id: loan.id,
+        name: loan.name,
+        principal: loan.principal,
+        rate: loan.rate,
+        term: loan.term
+      })));
+      
       // Use the simulateCascadingPayoffs function
       const results = simulateCascadingPayoffs(loansForCalculation, budget, paymentStrategy);
+      
+      console.log('simulateCascadingPayoffs results:', results);
       
       // If this was an ALL scenario calculation, map results back to prefixed IDs
       if (isAllScenarioCalc) {
@@ -903,6 +915,8 @@ function App() {
     if (!loans || !Array.isArray(loans) || loans.length === 0) return [];
     
     console.log('Calculating loanTileValues for activeScenario:', activeScenario.name);
+    console.log('Total budget:', totalBudget);
+    console.log('Payoff schedule results:', payoffSchedule);
     console.log('Loans in scenario:', loans.map(loan => ({
       id: loan.id,
       name: loan.name,
@@ -915,6 +929,8 @@ function App() {
       const payoffInfo = payoffSchedule?.find(p => p.id === loan.id);
       const refinanceInfo = refinanceAnalysis?.find(r => r.id === loan.id);
       const combinedInfo = combinedAnalysis?.find(c => c.id === loan.id);
+      
+      console.log(`Payoff info for ${loan.name}:`, payoffInfo);
       
       // For ALL scenario, use the loan's sourceRefinanceRate
       // For regular scenarios, use the scenario's refinanceRate
@@ -930,7 +946,9 @@ function App() {
         effectiveRefinanceRate,
         payoffInfo,
         refinanceInfo,
-        combinedInfo
+        combinedInfo,
+        activeScenario.loans || [], // Pass all loans for minimum payment calculations
+        payoffSchedule || [] // Pass the full payoff schedule for proper ordering
       );
     });
   }, [activeScenario, payoffSchedule, refinanceAnalysis, combinedAnalysis, activeScenarioId]);

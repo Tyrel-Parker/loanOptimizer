@@ -42,7 +42,9 @@ export const calculateLoanTileValues = (
   refinanceRate = 0,
   payoffInfo = null,
   refinanceInfo = null,
-  combinedInfo = null
+  combinedInfo = null,
+  allLoans = [],
+  fullPayoffSchedule = [] // Add the full payoff schedule
 ) => {
   const principal = loan.principal || 0;
   const rate = loan.rate || 0;
@@ -50,18 +52,9 @@ export const calculateLoanTileValues = (
   const isCreditCard = term === 0;
   
   // Determine which refinance rate to use
-  // Priority: loan.sourceRefinanceRate (for ALL scenario) > passed refinanceRate
   const effectiveRefinanceRate = loan.sourceRefinanceRate !== undefined 
     ? loan.sourceRefinanceRate 
     : refinanceRate;
-  
-  console.log(`calculateLoanTileValues for ${loan.name}:`, {
-    loanSourceRefinanceRate: loan.sourceRefinanceRate,
-    passedRefinanceRate: refinanceRate,
-    effectiveRefinanceRate: effectiveRefinanceRate,
-    loanRate: rate,
-    principal: principal
-  });
   
   // Determine tile visibility
   const hasExtraPaymentBudget = totalBudget > 0;
@@ -71,17 +64,6 @@ export const calculateLoanTileValues = (
   const showExtraPaymentsTile = hasExtraPaymentBudget && !!payoffInfo;
   const showRefinanceTile = hasRefinanceRateSet && refinanceRateIsLower && !!refinanceInfo && refinanceInfo.shouldRefinance;
   const showCombinedTile = !!combinedInfo && showExtraPaymentsTile && showRefinanceTile;
-  
-  console.log(`Tile visibility for ${loan.name}:`, {
-    hasExtraPaymentBudget,
-    hasRefinanceRateSet,
-    refinanceRateIsLower,
-    showExtraPaymentsTile,
-    showRefinanceTile,
-    showCombinedTile,
-    refinanceInfoExists: !!refinanceInfo,
-    refinanceInfoShouldRefinance: refinanceInfo?.shouldRefinance
-  });
   
   // MINIMUM PAYMENT CALCULATION
   let minimumTile = {
@@ -98,7 +80,7 @@ export const calculateLoanTileValues = (
         totalPaid: ccResults.totalPaid,
         totalInterest: ccResults.totalInterest,
         payoffMonths: ccResults.months,
-        monthlyPayment: Math.max(principal * 0.025, 25) // Approximate minimum payment
+        monthlyPayment: Math.max(principal * 0.025, 25)
       };
     } else if (term > 0) {
       const monthlyPayment = calculateMonthlyPayment(principal, rate, term);
@@ -114,15 +96,113 @@ export const calculateLoanTileValues = (
   // EXTRA PAYMENTS TILE
   let extraPaymentsTile = null;
   if (showExtraPaymentsTile && payoffInfo && payoffInfo.schedule) {
+    const actualExtraPayment = payoffInfo.extraPayment || 0;
+    const thisLoanMinimum = minimumTile.monthlyPayment || 0;
+    
+    // Calculate display values
+    let displayExtraPayment = actualExtraPayment;
+    let displayTotalPayment = thisLoanMinimum + actualExtraPayment;
+    
+    if (fullPayoffSchedule && fullPayoffSchedule.length > 0) {
+      // Use consistent calculation for all loans based on payoff order
+      
+      // Sort loans by actual payoff order from the schedule
+      const loansByPayoffOrder = [...fullPayoffSchedule].sort((a, b) => {
+        const aPayoffMonths = a.schedule?.payoffMonths || Infinity;
+        const bPayoffMonths = b.schedule?.payoffMonths || Infinity;
+        return aPayoffMonths - bPayoffMonths;
+      });
+      
+      // Find this loan's position in the payoff order
+      const thisLoanIndex = loansByPayoffOrder.findIndex(l => l.id === loan.id);
+      
+      if (thisLoanIndex >= 0) {
+        // Calculate minimums for loans that will still be active when this loan becomes focus
+        let remainingLoansMinimums = 0;
+        for (let i = thisLoanIndex; i < loansByPayoffOrder.length; i++) {
+          const remainingLoan = loansByPayoffOrder[i];
+          const originalLoanData = allLoans.find(l => {
+            const loanId = String(l.id);
+            const remainingLoanId = String(remainingLoan.id);
+            
+            return loanId === remainingLoanId || 
+                   loanId === remainingLoanId.split('_')[1] ||
+                   remainingLoanId === loanId ||
+                   (remainingLoanId.includes('_') && loanId === remainingLoanId.split('_')[1]);
+          });
+          
+          if (originalLoanData) {
+            let loanMinimum = 0;
+            if (originalLoanData.term === 0) {
+              loanMinimum = Math.max(originalLoanData.principal * 0.025, 25);
+            } else if (originalLoanData.term > 0) {
+              loanMinimum = calculateMonthlyPayment(originalLoanData.principal, originalLoanData.rate, originalLoanData.term);
+            }
+            remainingLoansMinimums += loanMinimum;
+          }
+        }
+        
+        // Available extra for this loan = total budget - remaining loans' minimums
+        const calculatedExtraPayment = Math.max(0, totalBudget - remainingLoansMinimums);
+        const calculatedTotalPayment = thisLoanMinimum + calculatedExtraPayment;
+        
+        // Debug logging for the first loan issue
+        console.log(`Calculation for ${loan.name} (index ${thisLoanIndex}):`, {
+          totalBudget,
+          thisLoanMinimum,
+          remainingLoansMinimums,
+          calculatedExtraPayment,
+          calculatedTotalPayment,
+          actualExtraPayment,
+          hasActualExtra: actualExtraPayment > 0
+        });
+        
+        // Use calculated values for ALL loans to ensure consistency
+        displayExtraPayment = calculatedExtraPayment;
+        displayTotalPayment = calculatedTotalPayment;
+        
+        console.log(`After setting displayExtraPayment for ${loan.name}:`, {
+          calculatedExtraPayment,
+          displayExtraPayment,
+          actualExtraPayment,
+          shouldBeCalculated: calculatedExtraPayment
+        });
+        
+        // Sanity check: total payment should never exceed budget
+        if (displayTotalPayment > totalBudget) {
+          displayTotalPayment = totalBudget;
+          displayExtraPayment = Math.max(0, totalBudget - thisLoanMinimum);
+        }
+      }
+    } else {
+      // Fallback if we don't have full schedule data
+      if (actualExtraPayment > 0) {
+        displayExtraPayment = actualExtraPayment;
+        displayTotalPayment = thisLoanMinimum + actualExtraPayment;
+      } else {
+        displayExtraPayment = 0;
+        displayTotalPayment = thisLoanMinimum;
+      }
+    }
+    
     extraPaymentsTile = {
       totalPaid: principal + (payoffInfo.schedule.totalInterest || 0),
       totalInterest: payoffInfo.schedule.totalInterest || 0,
       payoffMonths: payoffInfo.schedule.payoffMonths || 0,
-      monthlyPayment: (payoffInfo.requiredPayment || 0) + (payoffInfo.extraPayment || 0),
-      extraPayment: payoffInfo.extraPayment || 0,
+      monthlyPayment: displayTotalPayment,
+      extraPayment: 0, // Set to 0 to force display of estimatedExtraPayment
+      estimatedExtraPayment: displayExtraPayment, // This is what should be displayed
       interestSaved: (minimumTile.totalInterest || 0) - (payoffInfo.schedule.totalInterest || 0),
       monthsSaved: (minimumTile.payoffMonths || 0) - (payoffInfo.schedule.payoffMonths || 0)
     };
+    
+    console.log(`Final tile values for ${loan.name}:`, {
+      actualExtraPayment,
+      displayExtraPayment, 
+      estimatedExtraPayment: displayExtraPayment,
+      extraPaymentSetTo: 0,
+      monthlyPayment: displayTotalPayment
+    });
   }
   
   // REFINANCE TILE
@@ -143,8 +223,7 @@ export const calculateLoanTileValues = (
         monthsSaved: minimumTile.payoffMonths - ccResults.months
       };
     } else {
-      // Regular loan refinancing with realistic closing costs
-      // Use 2% for loans under $100k, 1.5% for loans over $100k (more realistic for large mortgages)
+      // Regular loan refinancing
       const closingCostPercentage = principal < 100000 ? 0.02 : 0.015;
       const closingCosts = principal * closingCostPercentage;
       const newLoanAmount = principal + closingCosts;
@@ -160,7 +239,7 @@ export const calculateLoanTileValues = (
         closingCosts,
         monthlyPayment: newMonthlyPayment,
         interestSaved: minimumTile.totalInterest - totalInterest,
-        monthsSaved: 0 // Regular loans keep same term
+        monthsSaved: 0
       };
     }
   }
@@ -168,8 +247,6 @@ export const calculateLoanTileValues = (
   // COMBINED TILE
   let combinedTile = null;
   if (showCombinedTile && combinedInfo && combinedInfo.schedule) {
-    // For combined tile, we need to account for the refinanced principal
-    const isCreditCard = loan.term === 0;
     let refinancedPrincipal = principal;
     
     if (effectiveRefinanceRate < rate && effectiveRefinanceRate > 0) {
@@ -198,7 +275,7 @@ export const calculateLoanTileValues = (
   return {
     loan,
     showTiles: {
-      minimum: true, // Always show minimum
+      minimum: true,
       extraPayments: showExtraPaymentsTile,
       refinance: showRefinanceTile,
       combined: showCombinedTile
@@ -221,16 +298,6 @@ export const calculateSummaryTotals = (loanTileValues) => {
     combined: { totalPaid: 0, totalInterest: 0, maxMonths: 0 }
   };
   
-  console.log('Loan Tile Values Debug:', loanTileValues.map(lv => ({
-    loanName: lv.loan.name,
-    sourceRefinanceRate: lv.loan.sourceRefinanceRate,
-    showTiles: lv.showTiles,
-    minimumTotalPaid: lv.tiles.minimum?.totalPaid || 0,
-    extraPaymentsTotalPaid: lv.tiles.extraPayments?.totalPaid || 0,
-    refinanceTotalPaid: lv.tiles.refinance?.totalPaid || 0,
-    combinedTotalPaid: lv.tiles.combined?.totalPaid || 0
-  })));
-  
   loanTileValues.forEach(loanData => {
     const { tiles } = loanData;
     
@@ -241,7 +308,7 @@ export const calculateSummaryTotals = (loanTileValues) => {
       totals.minimum.maxMonths = Math.max(totals.minimum.maxMonths, tiles.minimum.payoffMonths || 0);
     }
     
-    // Extra payments (use extra payment value if tile exists, otherwise minimum)
+    // Extra payments
     const extraTile = tiles.extraPayments || tiles.minimum;
     if (extraTile) {
       totals.extraPayments.totalPaid += extraTile.totalPaid || 0;
@@ -249,7 +316,7 @@ export const calculateSummaryTotals = (loanTileValues) => {
       totals.extraPayments.maxMonths = Math.max(totals.extraPayments.maxMonths, extraTile.payoffMonths || 0);
     }
     
-    // Refinance (use refinance value if tile exists, otherwise minimum)
+    // Refinance
     const refinanceTile = tiles.refinance || tiles.minimum;
     if (refinanceTile) {
       totals.refinance.totalPaid += refinanceTile.totalPaid || 0;
@@ -257,15 +324,13 @@ export const calculateSummaryTotals = (loanTileValues) => {
       totals.refinance.maxMonths = Math.max(totals.refinance.maxMonths, refinanceTile.payoffMonths || 0);
     }
     
-    // Combined (use combined value if tile exists, otherwise use extra payments value, otherwise minimum)
+    // Combined
     let combinedValue;
     if (tiles.combined) {
       combinedValue = tiles.combined;
     } else if (tiles.extraPayments) {
-      // If no combined tile but has extra payments, use extra payments as the best available strategy
       combinedValue = tiles.extraPayments;
     } else {
-      // Fallback to minimum
       combinedValue = tiles.minimum;
     }
     
@@ -275,8 +340,6 @@ export const calculateSummaryTotals = (loanTileValues) => {
       totals.combined.maxMonths = Math.max(totals.combined.maxMonths, combinedValue.payoffMonths || 0);
     }
   });
-  
-  console.log('Summary Totals Breakdown:', totals);
   
   return totals;
 };

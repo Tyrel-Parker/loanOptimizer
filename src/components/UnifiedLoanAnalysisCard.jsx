@@ -302,23 +302,37 @@ const UnifiedLoanAnalysisCard = ({
           {showTiles.extraPayments && extraPaymentsTile && (
             <div className="analysis-section flex-1 p-4 md:p-5 bg-gradient-to-br from-green-50 to-emerald-50 border-t-4 border-green-500 md:border-t-0 md:border-l-4 md:border-r border-gray-200 flex flex-col">
               <div className="section-title flex justify-between items-center mb-3">
-                <span className="text-sm font-semibold text-green-700">💚 Extra Payments</span>
-                {extraPaymentsTile.extraPayment > 0 && (
+                <span className="text-sm font-semibold text-green-700">Extra Payments</span>
+                {/* {extraPaymentsTile.extraPayment > 0 && (
                   <span className="priority-badge text-white text-xs px-2 py-1 rounded-full font-medium bg-green-600">
                     Active
                   </span>
-                )}
+                )} */}
               </div>
               
               <div className="metrics-grid grid grid-cols-2 gap-2 mb-3 flex-1">
                 <div className="metric-item bg-white p-2 rounded-lg shadow-sm text-center flex flex-col justify-center min-h-[4rem]">
                   <div className="metric-label text-xs text-green-600 font-medium mb-1">Extra</div>
                   <div className="metric-value text-sm font-semibold text-green-600">
-                    {extraPaymentsTile.extraPayment > 0 
-                      ? `+${formatCurrency(extraPaymentsTile.extraPayment)}` 
-                      : 'Future'
-                    }
+                    {(() => {
+                      const actualExtra = extraPaymentsTile.extraPayment || 0;
+                      const estimatedExtra = extraPaymentsTile.estimatedExtraPayment || 0;
+                      
+                      console.log(`Display logic for ${loan.name}:`, {
+                        actualExtra,
+                        estimatedExtra,
+                        willShowActual: actualExtra > 0,
+                        displayValue: actualExtra > 0 ? actualExtra : estimatedExtra
+                      });
+                      
+                      return actualExtra > 0 
+                        ? `+${formatCurrency(actualExtra)}` 
+                        : `~${formatCurrency(estimatedExtra)}`;
+                    })()}
                   </div>
+                  {/* {extraPaymentsTile.extraPayment === 0 && (
+                    <div className="text-xs text-green-500 mt-1">Estimated</div>
+                  )} */}
                 </div>
                 <div className="metric-item bg-white p-2 rounded-lg shadow-sm text-center flex flex-col justify-center min-h-[4rem]">
                   <div className="metric-label text-xs text-green-600 font-medium mb-1">Total</div>
@@ -335,7 +349,8 @@ const UnifiedLoanAnalysisCard = ({
                 <div className="metric-item bg-white p-2 rounded-lg shadow-sm text-center flex flex-col justify-center min-h-[4rem]">
                   <div className="metric-label text-xs text-green-600 font-medium mb-1">Saved</div>
                   <div className="metric-value text-xs font-semibold text-green-600">
-                    {extraPaymentsTile.monthsSaved > 0 ? `${extraPaymentsTile.monthsSaved}mo` : 'TBD'}
+                    {extraPaymentsTile.monthsSaved > 0 ? `${extraPaymentsTile.monthsSaved}mo` : 
+                     extraPaymentsTile.extraPayment > 0 ? '0mo' : 'Est.'}
                   </div>
                 </div>
               </div>
