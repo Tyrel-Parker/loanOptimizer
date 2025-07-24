@@ -139,18 +139,26 @@ const UnifiedAnalysisView = ({
       {hasLoans ? (
         <div className="space-y-6">
           {(() => {
-            // Sort loans by payment priority when extra payments are being used
+            // Sort loans by payment priority based on strategy
             let sortedLoanTileValues = [...loanTileValues];
             
             if (hasAnalysisData) {
-              // Sort by payoff order (earlier payoff = higher priority)
-              sortedLoanTileValues.sort((a, b) => {
-                const aPayoffMonths = a.tiles.extraPayments?.payoffMonths || a.tiles.minimum?.payoffMonths || Infinity;
-                const bPayoffMonths = b.tiles.extraPayments?.payoffMonths || b.tiles.minimum?.payoffMonths || Infinity;
-                
-                // Sort by payoff months (ascending = highest priority first)
-                return aPayoffMonths - bPayoffMonths;
-              });
+              // Sort by strategy priority, not payoff order
+              if (paymentStrategy === 'avalanche') {
+                // Avalanche: Highest interest rate first
+                sortedLoanTileValues.sort((a, b) => {
+                  const aRate = a.loan.rate || 0;
+                  const bRate = b.loan.rate || 0;
+                  return bRate - aRate; // Descending order (highest first)
+                });
+              } else {
+                // Snowball: Smallest balance first
+                sortedLoanTileValues.sort((a, b) => {
+                  const aPrincipal = a.loan.principal || 0;
+                  const bPrincipal = b.loan.principal || 0;
+                  return aPrincipal - bPrincipal; // Ascending order (smallest first)
+                });
+              }
             }
             
             return sortedLoanTileValues.map(loanTileValue => {

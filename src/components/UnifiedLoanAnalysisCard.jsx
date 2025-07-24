@@ -379,13 +379,13 @@ const UnifiedLoanAnalysisCard = ({
             <div className="analysis-section flex-1 p-4 md:p-5 bg-gradient-to-br from-purple-50 to-violet-50 border-t-4 border-purple-500 md:border-t-0 md:border-l-4 md:border-r border-gray-200 flex flex-col">
               <div className="section-title mb-3">
                 <span className="text-sm font-semibold text-purple-700">
-                  💜 {isCreditCard ? "Balance Transfer" : "Refinance"}
+                  {isCreditCard ? "Balance Transfer" : "Refinance"}
                 </span>
-                {isFromAllScenario && (
+                {/* {isFromAllScenario && (
                   <div className="text-xs text-purple-600 mt-1">
                     Using {loan.sourceScenarioName} rate: {sourceRefinanceRate}%
                   </div>
-                )}
+                )} */}
               </div>
               
               <div className="metrics-grid grid grid-cols-2 gap-2 mb-3 flex-1">
@@ -442,12 +442,12 @@ const UnifiedLoanAnalysisCard = ({
           {showTiles.combined && combinedTile && (
             <div className="analysis-section flex-1 p-4 md:p-5 bg-gradient-to-br from-amber-50 to-yellow-50 border-t-4 border-amber-500 md:border-t-0 md:border-l-4 flex flex-col">
               <div className="section-title mb-3">
-                <span className="text-sm font-semibold text-amber-700">🧡 Combined Strategy</span>
-                {isFromAllScenario && (
+                <span className="text-sm font-semibold text-amber-700">Combined Strategy</span>
+                {/* {isFromAllScenario && (
                   <div className="text-xs text-amber-600 mt-1">
                     Refinance + Extra Payments
                   </div>
-                )}
+                )} */}
               </div>
               
               <div className="metrics-grid grid grid-cols-2 gap-2 mb-3 flex-1">
