@@ -55,6 +55,14 @@ export const calculateLoanTileValues = (
     ? loan.sourceRefinanceRate 
     : refinanceRate;
   
+  console.log(`calculateLoanTileValues for ${loan.name}:`, {
+    loanSourceRefinanceRate: loan.sourceRefinanceRate,
+    passedRefinanceRate: refinanceRate,
+    effectiveRefinanceRate: effectiveRefinanceRate,
+    loanRate: rate,
+    principal: principal
+  });
+  
   // Determine tile visibility
   const hasExtraPaymentBudget = totalBudget > 0;
   const hasRefinanceRateSet = effectiveRefinanceRate > 0;
@@ -63,6 +71,17 @@ export const calculateLoanTileValues = (
   const showExtraPaymentsTile = hasExtraPaymentBudget && !!payoffInfo;
   const showRefinanceTile = hasRefinanceRateSet && refinanceRateIsLower && !!refinanceInfo && refinanceInfo.shouldRefinance;
   const showCombinedTile = !!combinedInfo && showExtraPaymentsTile && showRefinanceTile;
+  
+  console.log(`Tile visibility for ${loan.name}:`, {
+    hasExtraPaymentBudget,
+    hasRefinanceRateSet,
+    refinanceRateIsLower,
+    showExtraPaymentsTile,
+    showRefinanceTile,
+    showCombinedTile,
+    refinanceInfoExists: !!refinanceInfo,
+    refinanceInfoShouldRefinance: refinanceInfo?.shouldRefinance
+  });
   
   // MINIMUM PAYMENT CALCULATION
   let minimumTile = {

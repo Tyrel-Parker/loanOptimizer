@@ -64,7 +64,9 @@ function App() {
         // Override with analysis values for budget only
         return {
           ...baseAllScenario,
-          totalBudget: allScenarioAnalysis.totalBudget
+          totalBudget: allScenarioAnalysis.totalBudget,
+          // Don't override refinanceRate - it should remain 0 for ALL scenario
+          refinanceRate: 0
         };
       }
       const foundScenario = scenarios.find(s => s.id === activeScenarioId);
@@ -215,7 +217,8 @@ function App() {
           [field]: value
         }));
         return;
-      } else {
+      } else if (field === 'refinanceRate') {
+        // Prevent editing refinance rate in ALL scenario
         console.warn('Cannot edit refinance rate in ALL scenario - it uses individual scenario rates');
         return;
       }
@@ -499,8 +502,7 @@ function App() {
       setActiveScenarioId(ALL_SCENARIO_ID); // Default to ALL scenario
       setPaymentStrategy('avalanche');
       setAllScenarioAnalysis({
-        totalBudget: 0,
-        refinanceRate: 0
+        totalBudget: 0
       });
     }
   };
@@ -578,49 +580,60 @@ function App() {
   // Calculate refinance analysis
   const calculateRefinanceAnalysis = useCallback(() => {
     try {
-      const { loans, refinanceRate } = activeScenario;
+      const { loans } = activeScenario;
       if (!loans || !Array.isArray(loans) || loans.length === 0) return [];
       
-      // Ensure refinanceRate is a valid number
-      const rate = parseFloat(refinanceRate);
-      if (isNaN(rate) || rate <= 0) return [];
+      console.log('calculateRefinanceAnalysis called for scenario:', activeScenario.name);
       
-      // For ALL scenario, we need to use the original loan structure for calculations
-      let loansForCalculation = loans;
-      let isAllScenarioCalc = false;
+      // For ALL scenario, analyze each loan with its source scenario's refinance rate
+      let results = [];
       
       if (activeScenarioId === ALL_SCENARIO_ID) {
-        isAllScenarioCalc = true;
-        // Convert prefixed loans back to original structure for calculation
-        loansForCalculation = loans.map(loan => {
-          const originalId = loan.id.includes('_') ? loan.id.split('_')[1] : loan.id;
-          return {
-            ...loan,
-            id: originalId
-          };
-        });
-      }
-      
-      const results = analyzeRefinance(loansForCalculation, rate);
-      
-      // If this was an ALL scenario calculation, map results back to prefixed IDs
-      if (isAllScenarioCalc) {
-        return results.map(result => {
-          const originalLoan = loans.find(loan => {
-            const originalId = loan.id.includes('_') ? loan.id.split('_')[1] : loan.id;
-            return originalId === result.id;
-          });
+        console.log('Processing ALL scenario refinance analysis');
+        // For ALL scenario, use each loan's sourceRefinanceRate
+        loans.forEach(loan => {
+          const refinanceRate = loan.sourceRefinanceRate || 0;
+          console.log(`Loan ${loan.name}: sourceRefinanceRate = ${refinanceRate}, loan.rate = ${loan.rate}`);
           
-          if (originalLoan) {
-            return {
-              ...result,
-              id: originalLoan.id // Use the prefixed ID
+          if (refinanceRate > 0 && refinanceRate < loan.rate) {
+            console.log(`Processing refinance for ${loan.name} with rate ${refinanceRate}`);
+            // Convert back to original structure for calculation
+            const originalId = loan.id.includes('_') ? loan.id.split('_')[1] : loan.id;
+            const loanForCalculation = {
+              ...loan,
+              id: originalId
             };
+            
+            const loanResults = analyzeRefinance([loanForCalculation], refinanceRate);
+            console.log(`Refinance results for ${loan.name}:`, loanResults);
+            
+            // Map result back to prefixed ID
+            loanResults.forEach(result => {
+              results.push({
+                ...result,
+                id: loan.id // Use the prefixed ID
+              });
+            });
+          } else {
+            console.log(`Skipping refinance for ${loan.name}: rate ${refinanceRate} not beneficial (loan rate: ${loan.rate})`);
           }
-          return result;
         });
+      } else {
+        console.log('Processing regular scenario refinance analysis');
+        // Regular scenario - use scenario's refinance rate
+        const refinanceRate = parseFloat(activeScenario.refinanceRate);
+        console.log(`Scenario refinance rate: ${refinanceRate}`);
+        
+        if (isNaN(refinanceRate) || refinanceRate <= 0) {
+          console.log('No valid refinance rate set for scenario');
+          return [];
+        }
+        
+        results = analyzeRefinance(loans, refinanceRate);
+        console.log('Regular scenario refinance results:', results);
       }
       
+      console.log('Final refinance analysis results:', results);
       return results;
     } catch (error) {
       console.error("Error calculating refinance analysis:", error);
@@ -631,118 +644,179 @@ function App() {
   // Calculate combined analysis (refinance + extra payments)
   const calculateCombinedAnalysis = useCallback(() => {
     try {
-      const { loans, totalBudget, refinanceRate } = activeScenario;
+      const { loans, totalBudget } = activeScenario;
       
       // Add defensive checks
       if (!loans || !Array.isArray(loans) || loans.length === 0) return [];
       
-      // Ensure values are valid numbers
+      // Ensure budget is valid
       const budget = parseFloat(totalBudget);
-      const rate = parseFloat(refinanceRate);
+      if (isNaN(budget) || budget <= 0) return [];
       
-      if (isNaN(budget) || budget <= 0 || isNaN(rate) || rate <= 0) return [];
-      
-      // For ALL scenario, we need to use the original loan structure for calculations
-      let loansForCalculation = loans;
-      let isAllScenarioCalc = false;
+      let results = [];
       
       if (activeScenarioId === ALL_SCENARIO_ID) {
-        isAllScenarioCalc = true;
-        // Convert prefixed loans back to original structure for calculation
-        loansForCalculation = loans.map(loan => {
+        // For ALL scenario, group loans by their source refinance rate and process separately
+        const loansByRefRate = {};
+        
+        loans.forEach(loan => {
+          const refRate = loan.sourceRefinanceRate || 0;
+          const key = refRate.toString();
+          
+          if (!loansByRefRate[key]) {
+            loansByRefRate[key] = [];
+          }
+          
+          // Convert to original structure for calculation
           const originalId = loan.id.includes('_') ? loan.id.split('_')[1] : loan.id;
-          return {
+          loansByRefRate[key].push({
             ...loan,
             id: originalId
+          });
+        });
+        
+        // Process each group
+        Object.entries(loansByRefRate).forEach(([refRateStr, groupLoans]) => {
+          const refRate = parseFloat(refRateStr);
+          
+          if (refRate > 0 && groupLoans.length > 0) {
+            // Calculate proportion of budget for this group
+            const groupPrincipal = groupLoans.reduce((sum, loan) => sum + (loan.principal || 0), 0);
+            const totalPrincipal = loans.reduce((sum, loan) => sum + (loan.principal || 0), 0);
+            const groupBudget = totalPrincipal > 0 ? (budget * groupPrincipal / totalPrincipal) : 0;
+            
+            if (groupBudget > 0) {
+              // Create refinanced version of loans with realistic fees
+              const refinancedLoans = groupLoans.map(loan => {
+                if (!loan || !loan.rate || !loan.principal) return loan;
+                
+                // Only refinance if the new rate is actually lower
+                if (loan.rate > refRate) {
+                  const isCreditCard = loan.term === 0;
+                  
+                  if (isCreditCard) {
+                    const transferFee = Math.max(loan.principal * 0.03, 5);
+                    return {
+                      ...loan,
+                      rate: refRate,
+                      principal: loan.principal + transferFee
+                    };
+                  } else {
+                    const closingCostPercentage = loan.principal < 100000 ? 0.02 : 0.015;
+                    const closingCosts = loan.principal * closingCostPercentage;
+                    return {
+                      ...loan,
+                      rate: refRate,
+                      principal: loan.principal + closingCosts
+                    };
+                  }
+                }
+                return loan;
+              });
+              
+              // Calculate combined results for this group
+              const groupResults = simulateCascadingPayoffs(refinancedLoans, groupBudget, paymentStrategy);
+              
+              // Map back to prefixed IDs and add to results
+              groupResults.forEach(result => {
+                const originalLoan = loans.find(loan => {
+                  const originalId = loan.id.includes('_') ? loan.id.split('_')[1] : loan.id;
+                  return originalId === result.id;
+                });
+                
+                if (originalLoan) {
+                  // Calculate comparison to original
+                  const originalSchedule = calculateAmortizationSchedule(originalLoan);
+                  const refinancedLoan = refinancedLoans.find(l => l.id === result.id);
+                  
+                  const resultTotalInterest = result.schedule?.totalInterest || 0;
+                  const resultPayoffMonths = result.schedule?.payoffMonths || 0;
+                  const originalTotalInterest = originalSchedule?.totalInterest || 0;
+                  const originalPayoffMonths = originalSchedule?.payoffMonths || 0;
+                  
+                  const originalTotalPaid = originalLoan.principal + originalTotalInterest;
+                  const combinedTotalPaid = refinancedLoan.principal + resultTotalInterest;
+                  const totalSaved = originalTotalPaid - combinedTotalPaid;
+                  const monthsSaved = originalPayoffMonths - resultPayoffMonths;
+                  
+                  results.push({
+                    ...result,
+                    id: originalLoan.id,
+                    originalRate: originalLoan.rate,
+                    newRate: refinancedLoan.rate,
+                    originalSchedule,
+                    totalSaved,
+                    monthsSaved
+                  });
+                }
+              });
+            }
+          }
+        });
+      } else {
+        // Regular scenario logic
+        const refinanceRate = parseFloat(activeScenario.refinanceRate);
+        if (isNaN(refinanceRate) || refinanceRate <= 0) return [];
+        
+        // Create refinanced version of loans with realistic fees
+        const refinancedLoans = loans.map(loan => {
+          if (!loan || !loan.rate || !loan.principal) return loan;
+          
+          if (loan.rate > refinanceRate) {
+            const isCreditCard = loan.term === 0;
+            
+            if (isCreditCard) {
+              const transferFee = Math.max(loan.principal * 0.03, 5);
+              return {
+                ...loan,
+                rate: refinanceRate,
+                principal: loan.principal + transferFee
+              };
+            } else {
+              const closingCostPercentage = loan.principal < 100000 ? 0.02 : 0.015;
+              const closingCosts = loan.principal * closingCostPercentage;
+              return {
+                ...loan,
+                rate: refinanceRate,
+                principal: loan.principal + closingCosts
+              };
+            }
+          }
+          
+          return loan;
+        });
+        
+        const combinedResults = simulateCascadingPayoffs(refinancedLoans, budget, paymentStrategy);
+        
+        results = combinedResults.map(result => {
+          const originalLoan = loans.find(l => l.id === result.id);
+          const refinancedLoan = refinancedLoans.find(l => l.id === result.id);
+          if (!originalLoan) return result;
+          
+          const originalSchedule = calculateAmortizationSchedule(originalLoan);
+          
+          const resultTotalInterest = result.schedule?.totalInterest || 0;
+          const resultPayoffMonths = result.schedule?.payoffMonths || 0;
+          const originalTotalInterest = originalSchedule?.totalInterest || 0;
+          const originalPayoffMonths = originalSchedule?.payoffMonths || 0;
+          
+          const originalTotalPaid = originalLoan.principal + originalTotalInterest;
+          const combinedTotalPaid = refinancedLoan.principal + resultTotalInterest;
+          const totalSaved = originalTotalPaid - combinedTotalPaid;
+          const monthsSaved = originalPayoffMonths - resultPayoffMonths;
+          
+          return {
+            ...result,
+            originalRate: originalLoan.rate,
+            newRate: refinancedLoan.rate,
+            originalSchedule,
+            totalSaved,
+            monthsSaved
           };
         });
       }
       
-      // Create refinanced version of loans with realistic fees
-      const refinancedLoans = loansForCalculation.map(loan => {
-        // Ensure loan has all required properties
-        if (!loan || !loan.rate || !loan.principal) return loan;
-        
-        // Only refinance if the new rate is actually lower
-        if (loan.rate > rate) {
-          const isCreditCard = loan.term === 0;
-          
-          if (isCreditCard) {
-            // Credit card balance transfer - add fee to principal
-            const transferFee = Math.max(loan.principal * 0.03, 5);
-            return {
-              ...loan,
-              rate: rate,
-              principal: loan.principal + transferFee // Add transfer fee to balance
-            };
-          } else {
-            // Regular loan refinancing - add closing costs to principal
-            const closingCostPercentage = loan.principal < 100000 ? 0.02 : 0.015;
-            const closingCosts = loan.principal * closingCostPercentage;
-            return {
-              ...loan,
-              rate: rate,
-              principal: loan.principal + closingCosts // Add closing costs to balance
-            };
-          }
-        }
-        
-        return loan; // Don't refinance if rate isn't better
-      });
-      
-      // Use the proper simulation function for cascading payments on refinanced loans
-      const combinedResults = simulateCascadingPayoffs(refinancedLoans, budget, paymentStrategy);
-      
-      // Calculate detailed analysis with comparison to original
-      let finalResults = combinedResults.map(result => {
-        const originalLoan = loansForCalculation.find(l => l.id === result.id);
-        const refinancedLoan = refinancedLoans.find(l => l.id === result.id);
-        if (!originalLoan) return result;
-        
-        // Calculate the original schedule for comparison
-        const originalSchedule = calculateAmortizationSchedule(originalLoan);
-        
-        // Add null checks for schedule properties
-        const resultTotalInterest = result.schedule?.totalInterest || 0;
-        const resultPayoffMonths = result.schedule?.payoffMonths || 0;
-        const originalTotalInterest = originalSchedule?.totalInterest || 0;
-        const originalPayoffMonths = originalSchedule?.payoffMonths || 0;
-        
-        // Calculate total savings compared to original loan (not refinanced loan)
-        const originalTotalPaid = originalLoan.principal + originalTotalInterest;
-        const combinedTotalPaid = refinancedLoan.principal + resultTotalInterest;
-        const totalSaved = originalTotalPaid - combinedTotalPaid;
-        const monthsSaved = originalPayoffMonths - resultPayoffMonths;
-        
-        return {
-          ...result,
-          originalRate: originalLoan.rate,
-          newRate: refinancedLoan.rate,
-          originalSchedule,
-          totalSaved,
-          monthsSaved
-        };
-      });
-      
-      // If this was an ALL scenario calculation, map results back to prefixed IDs
-      if (isAllScenarioCalc) {
-        finalResults = finalResults.map(result => {
-          const originalLoan = loans.find(loan => {
-            const originalId = loan.id.includes('_') ? loan.id.split('_')[1] : loan.id;
-            return originalId === result.id;
-          });
-          
-          if (originalLoan) {
-            return {
-              ...result,
-              id: originalLoan.id // Use the prefixed ID
-            };
-          }
-          return result;
-        });
-      }
-      
-      return finalResults;
+      return results;
     } catch (error) {
       console.error("Error calculating combined analysis:", error);
       return [];
@@ -825,8 +899,16 @@ function App() {
 
   // Calculate loan tile values with centralized logic
   const loanTileValues = useMemo(() => {
-    const { loans, totalBudget, refinanceRate } = activeScenario;
+    const { loans, totalBudget } = activeScenario;
     if (!loans || !Array.isArray(loans) || loans.length === 0) return [];
+    
+    console.log('Calculating loanTileValues for activeScenario:', activeScenario.name);
+    console.log('Loans in scenario:', loans.map(loan => ({
+      id: loan.id,
+      name: loan.name,
+      sourceRefinanceRate: loan.sourceRefinanceRate,
+      rate: loan.rate
+    })));
     
     return loans.map(loan => {
       // Find corresponding analysis data
@@ -834,16 +916,24 @@ function App() {
       const refinanceInfo = refinanceAnalysis?.find(r => r.id === loan.id);
       const combinedInfo = combinedAnalysis?.find(c => c.id === loan.id);
       
+      // For ALL scenario, use the loan's sourceRefinanceRate
+      // For regular scenarios, use the scenario's refinanceRate
+      const effectiveRefinanceRate = activeScenarioId === ALL_SCENARIO_ID 
+        ? (loan.sourceRefinanceRate || 0)
+        : (activeScenario.refinanceRate || 0);
+      
+      console.log(`Loan ${loan.name}: effectiveRefinanceRate = ${effectiveRefinanceRate}, sourceRefinanceRate = ${loan.sourceRefinanceRate}, scenarioRefinanceRate = ${activeScenario.refinanceRate}`);
+      
       return calculateLoanTileValues(
         loan,
         totalBudget || 0,
-        refinanceRate || 0,
+        effectiveRefinanceRate,
         payoffInfo,
         refinanceInfo,
         combinedInfo
       );
     });
-  }, [activeScenario, payoffSchedule, refinanceAnalysis, combinedAnalysis]);
+  }, [activeScenario, payoffSchedule, refinanceAnalysis, combinedAnalysis, activeScenarioId]);
 
   // Calculate summary totals from tile values
   const summaryTotals = useMemo(() => {
