@@ -5,6 +5,7 @@ import tailwindcss from '@tailwindcss/vite'
 
 // https://vite.dev/config/
 export default defineConfig({
+  base: '/loanOptimizer/',
   plugins: [react(), tailwindcss()],
   resolve: {
     extensions: ['.mjs', '.js', '.jsx', '.ts', '.tsx', '.json']
