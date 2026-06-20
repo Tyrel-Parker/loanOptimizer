@@ -51,3 +51,12 @@ export const formatCurrency = (amount) => {
       maximumFractionDigits: decimalPlaces
     }).format(number);
   };
+
+  export const formatMonths = (months) => {
+    if (!months || months <= 0) return '0M';
+    const years = Math.floor(months / 12);
+    const remainingMonths = months % 12;
+    if (years === 0) return `${remainingMonths}M`;
+    if (remainingMonths === 0) return `${years}Y`;
+    return `${years}Y ${remainingMonths}M`;
+  };

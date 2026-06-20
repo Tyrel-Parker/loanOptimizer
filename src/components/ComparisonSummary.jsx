@@ -1,11 +1,13 @@
 import React from 'react';
-import { formatCurrency } from '../utils/formatters';
+import { formatCurrency, formatMonths } from '../utils/formatters';
 import { BarChart4 } from './icons/Icons';
 
-const ComparisonSummary = ({ 
-  activeScenario, 
+const ComparisonSummary = ({
+  activeScenario,
   summary,
-  summaryTotals = null  // Use calculated summary totals instead of recalculating
+  summaryTotals = null,
+  isExpanded = true,
+  onToggle
 }) => {
   if (!summary || !summaryTotals) return null;
 
@@ -77,9 +79,15 @@ const ComparisonSummary = ({
 
   return (
     <section className="bg-white rounded-lg shadow-md p-4">
-      <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+      <h2
+        className="text-xl font-semibold flex items-center gap-2 cursor-pointer select-none"
+        onClick={onToggle}
+      >
+        <span className="text-gray-400 text-sm">{isExpanded ? '▼' : '▶'}</span>
         <BarChart4 className="h-5 w-5" /> Summary Comparison
       </h2>
+
+      {!isExpanded ? null : (<div className="mt-4">
       
       {isAllScenario && (
         <div className="mb-4 p-3 bg-purple-50 rounded-lg">
@@ -148,13 +156,13 @@ const ComparisonSummary = ({
               <div>
                 <div className="text-sm text-gray-600">Time Saved</div>
                 <div className="font-medium text-green-600">
-                  {Math.max(0, minimumTotals.maxMonths - extraPaymentTotals.maxMonths)} months
+                  {formatMonths(Math.max(0, minimumTotals.maxMonths - extraPaymentTotals.maxMonths))}
                 </div>
               </div>
             </div>
           </div>
         )}
-        
+
         {/* With Refinancing */}
         {showRefinanceTiles && (
           <div className="w-full md:flex-1 bg-purple-50 p-4 rounded-lg border border-purple-100">
@@ -191,7 +199,7 @@ const ComparisonSummary = ({
               <div>
                 <div className="text-sm text-gray-600">Time Saved</div>
                 <div className="font-medium text-purple-600">
-                  {Math.max(0, minimumTotals.maxMonths - refinanceTotals.maxMonths)} months
+                  {formatMonths(Math.max(0, minimumTotals.maxMonths - refinanceTotals.maxMonths))}
                 </div>
               </div>
             </div>
@@ -230,7 +238,7 @@ const ComparisonSummary = ({
               <div>
                 <div className="text-sm text-gray-600">Time Saved</div>
                 <div className="font-medium text-amber-600">
-                  {Math.max(0, minimumTotals.maxMonths - combinedTotals.maxMonths)} months
+                  {formatMonths(Math.max(0, minimumTotals.maxMonths - combinedTotals.maxMonths))}
                 </div>
               </div>
             </div>
@@ -254,6 +262,7 @@ const ComparisonSummary = ({
           </ul>
         </div>
       )}
+      </div>)}
     </section>
   );
 };

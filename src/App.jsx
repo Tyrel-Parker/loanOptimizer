@@ -42,6 +42,13 @@ function App() {
   const [allScenarioAnalysis, setAllScenarioAnalysis] = useState({
     totalBudget: 5000
   });
+
+  // Income tracking
+  const [monthlyIncome, setMonthlyIncome] = useState(0);
+
+  // Collapsible section states
+  const [backupExpanded, setBackupExpanded] = useState(false);
+  const [summaryExpanded, setSummaryExpanded] = useState(true);
   
   // Computed property to get scenarios including the ALL scenario
   const scenariosWithAll = useMemo(() => {
@@ -95,6 +102,9 @@ function App() {
         if (parsedData.allScenarioAnalysis) {
           setAllScenarioAnalysis(parsedData.allScenarioAnalysis);
         }
+        if (parsedData.monthlyIncome !== undefined) {
+          setMonthlyIncome(parsedData.monthlyIncome);
+        }
       } catch (e) {
         console.error('Error loading saved data:', e);
         // Set defaults on error
@@ -111,12 +121,13 @@ function App() {
   useEffect(() => {
     const dataToSave = {
       scenarios,
-      activeScenarioId, // Keep the actual activeScenarioId, including ALL_SCENARIO_ID
+      activeScenarioId,
       paymentStrategy,
-      allScenarioAnalysis
+      allScenarioAnalysis,
+      monthlyIncome
     };
     localStorage.setItem('multiLoanCalculator', JSON.stringify(dataToSave));
-  }, [scenarios, activeScenarioId, paymentStrategy, allScenarioAnalysis]);
+  }, [scenarios, activeScenarioId, paymentStrategy, allScenarioAnalysis, monthlyIncome]);
   
   // Helper function for debouncing
   const debounce = (func, delay) => {
@@ -205,6 +216,26 @@ function App() {
   const handleSelectScenario = (scenarioId) => {
     setActiveScenarioId(scenarioId);
   };
+
+  // Toggle whether a scenario counts toward budget tracking
+  const toggleScenarioBudget = (scenarioId) => {
+    if (scenarioId === ALL_SCENARIO_ID) return;
+    setScenarios(currentScenarios => currentScenarios.map(scenario => {
+      if (scenario.id === scenarioId) {
+        return { ...scenario, isBudgetScenario: !scenario.isBudgetScenario };
+      }
+      return scenario;
+    }));
+  };
+
+  // Compute budget allocation from flagged scenarios
+  const budgetAllocation = useMemo(() => {
+    const budgetScenarios = scenarios.filter(s => s.isBudgetScenario && s.id !== ALL_SCENARIO_ID);
+    const allocated = budgetScenarios.reduce((sum, s) => sum + (parseFloat(s.totalBudget) || 0), 0);
+    const remaining = monthlyIncome - allocated;
+    const isOverBudget = monthlyIncome > 0 && allocated > monthlyIncome;
+    return { allocated, remaining, isOverBudget, budgetScenarioCount: budgetScenarios.length };
+  }, [scenarios, monthlyIncome]);
   
   // Update a scenario field with improved error handling
   const updateScenario = useCallback((field, value) => {
@@ -428,7 +459,7 @@ function App() {
       }
       
       // For numeric fields, ensure proper parsing
-      if (field === 'principal' || field === 'rate') {
+      if (field === 'principal' || field === 'rate' || field === 'monthlyInsurance' || field === 'monthlyTaxes') {
         // Delay numeric parsing to avoid mid-typing issues
         setTimeout(() => {
           setScenarios(currentScenarios => {
@@ -498,25 +529,22 @@ function App() {
   const clearAllData = () => {
     if (window.confirm("This will completely clear all your data and start fresh with no sample scenarios. Are you sure?")) {
       localStorage.removeItem('multiLoanCalculator');
-      setScenarios([]); // Start with no scenarios
-      setActiveScenarioId(ALL_SCENARIO_ID); // Default to ALL scenario
+      setScenarios([]);
+      setActiveScenarioId(ALL_SCENARIO_ID);
       setPaymentStrategy('avalanche');
-      setAllScenarioAnalysis({
-        totalBudget: 0
-      });
+      setAllScenarioAnalysis({ totalBudget: 0 });
+      setMonthlyIncome(0);
     }
   };
 
-  // Reset all data
   const resetAllData = () => {
     if (window.confirm("This will reset all your data to the sample scenarios. Are you sure?")) {
       localStorage.removeItem('multiLoanCalculator');
       setScenarios(createDefaultScenarios());
-      setActiveScenarioId(ALL_SCENARIO_ID); // Reset to ALL scenario
+      setActiveScenarioId(ALL_SCENARIO_ID);
       setPaymentStrategy('avalanche');
-      setAllScenarioAnalysis({
-        totalBudget: 5000
-      });
+      setAllScenarioAnalysis({ totalBudget: 5000 });
+      setMonthlyIncome(0);
     }
   };
   
@@ -1144,24 +1172,37 @@ function App() {
         refinanceSummary={refinanceSummary}
         onUpdateScenario={updateScenario}
         onChangeStrategy={setPaymentStrategy}
+        monthlyIncome={monthlyIncome}
+        onUpdateIncome={setMonthlyIncome}
+        budgetAllocation={budgetAllocation}
       />
       
       {/* Backup and Restore */}
       <div id="scenarios-section" className="bg-white rounded-lg shadow-md p-4 mb-4">
-        <h2 className="text-xl font-semibold mb-4">Backup and Restore</h2>
-        <p className="mb-4 text-sm text-gray-600">
-          Export your scenarios to a file for backup, or import from a previously exported file.
-        </p>
-        <ImportExportButtons 
-          scenarios={scenarios}
-          activeScenarioId={activeScenarioId}
-          paymentStrategy={paymentStrategy}
-          onImport={handleImportScenarios}
-        />
+        <h2
+          className="text-xl font-semibold flex items-center gap-2 cursor-pointer select-none"
+          onClick={() => setBackupExpanded(!backupExpanded)}
+        >
+          <span className="text-gray-400 text-sm">{backupExpanded ? '▼' : '▶'}</span>
+          Backup and Restore
+        </h2>
+        {backupExpanded && (
+          <div className="mt-4">
+            <p className="mb-4 text-sm text-gray-600">
+              Export your scenarios to a file for backup, or import from a previously exported file.
+            </p>
+            <ImportExportButtons
+              scenarios={scenarios}
+              activeScenarioId={activeScenarioId}
+              paymentStrategy={paymentStrategy}
+              onImport={handleImportScenarios}
+            />
+          </div>
+        )}
       </div>
       
       {/* Scenario Manager */}
-      <ScenarioManager 
+      <ScenarioManager
         scenarios={scenariosWithAll}
         activeScenarioId={activeScenarioId}
         onSelectScenario={handleSelectScenario}
@@ -1169,6 +1210,9 @@ function App() {
         onDuplicateScenario={duplicateScenario}
         onDeleteScenario={deleteScenario}
         onUpdateScenarioName={updateScenarioName}
+        onToggleBudget={toggleScenarioBudget}
+        monthlyIncome={monthlyIncome}
+        budgetAllocation={budgetAllocation}
       />
       
       {/* Unified Analysis View - Now handles both editing and analysis */}
@@ -1187,10 +1231,12 @@ function App() {
       
       {/* Summary Comparison */}
       <div id="summary-section">
-        <ComparisonSummary 
+        <ComparisonSummary
           activeScenario={activeScenario}
           summary={summary}
           summaryTotals={summaryTotals}
+          isExpanded={summaryExpanded}
+          onToggle={() => setSummaryExpanded(!summaryExpanded)}
         />
       </div>
       

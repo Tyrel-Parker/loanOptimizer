@@ -20,60 +20,126 @@ button {
   transition: border-color 0.25s;
 }
 
-/* Toolbar-specific styles */
-.content-with-toolbar {
-  margin-right: 80px;
-}
-
-@media (min-width: 768px) {
+/* Desktop toolbar styles */
+@media (min-width: 769px) {
   .content-with-toolbar {
-    margin-right: 288px;
+    margin-right: 308px;
+  }
+
+  .toolbar-fixed {
+    position: fixed;
+    top: 1rem;
+    right: 1rem;
+    z-index: 50;
+    background-color: white;
+    border-radius: 0.5rem;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    max-height: calc(100vh - 2rem);
+    overflow-y: auto;
+  }
+
+  .toolbar-toggle {
+    position: absolute;
+    left: -1.5rem;
+    top: 1.5rem;
+    width: 1.5rem;
+    height: 3rem;
+    background-color: #3b82f6;
+    color: white;
+    border: none;
+    border-radius: 0.25rem 0 0 0.25rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background-color 0.2s;
+  }
+
+  .toolbar-toggle:hover {
+    background-color: #2563eb;
+  }
+
+  .toolbar {
+    transition: width 0.3s ease, transform 0.3s ease;
+  }
+
+  .toolbar-collapsed {
+    width: 3rem;
+  }
+
+  .toolbar-expanded {
+    width: 18rem;
   }
 }
 
-.toolbar-fixed {
-  position: fixed;
-  top: 1rem;
-  right: 1rem;
-  z-index: 50;
-  background-color: white;
-  border-radius: 0.5rem;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-  max-height: calc(100vh - 2rem);
-  overflow-y: auto;
+/* Mobile toolbar: bottom sheet */
+@media (max-width: 768px) {
+  .content-with-toolbar {
+    margin-right: 0;
+    padding-bottom: 4rem;
+  }
+
+  .toolbar-fixed {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    top: auto;
+    z-index: 50;
+    background-color: white;
+    border-radius: 1rem 1rem 0 0;
+    box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.15);
+    max-height: 80vh;
+    overflow-y: auto;
+    transition: transform 0.3s ease;
+  }
+
+  .toolbar-collapsed {
+    transform: translateY(calc(100% - 3.5rem));
+    width: 100%;
+  }
+
+  .toolbar-expanded {
+    transform: translateY(0);
+    width: 100%;
+  }
+
+  .toolbar-toggle {
+    position: static;
+    width: 100%;
+    height: 3.5rem;
+    background-color: #3b82f6;
+    color: white;
+    border: none;
+    border-radius: 1rem 1rem 0 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 0.875rem;
+    font-weight: 600;
+    gap: 0.5rem;
+  }
+
+  .toolbar-toggle:hover {
+    background-color: #2563eb;
+  }
+
+  .toolbar .toolbar-body {
+    padding-bottom: 1rem;
+  }
+
+  .mobile-overlay {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background-color: rgba(0, 0, 0, 0.3);
+    z-index: 49;
+  }
 }
 
-.toolbar-toggle {
-  position: absolute;
-  left: -1.5rem;
-  top: 1.5rem;
-  width: 1.5rem;
-  height: 3rem;
-  background-color: #3b82f6;
-  color: white;
-  border: none;
-  border-radius: 0.25rem 0 0 0.25rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: background-color 0.2s;
-}
-
-.toolbar-toggle:hover {
-  background-color: #2563eb;
-}
-
-.toolbar {
-  transition: width 0.3s ease, transform 0.3s ease;
-}
-
-.toolbar-collapsed {
-  width: 3rem;
-}
-
-.toolbar-expanded {
-  width: 18rem;
+.mobile-overlay {
+  display: none;
 }
 
 /* Smooth scrolling and section navigation */

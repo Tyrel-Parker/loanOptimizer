@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { formatCurrency } from '../utils/formatters';
+import { formatCurrency, formatMonths } from '../utils/formatters';
 import HelpModal from './HelpModal';
 
 // Simple HelpCircle icon component
@@ -11,19 +11,23 @@ const HelpCircle = ({ className = "h-4 w-4" }) => (
   </svg>
 );
 
-const FloatingToolbar = ({ 
+const FloatingToolbar = ({
   activeScenario,
   paymentStrategy,
   payoffSummary,
   refinanceSummary,
   onUpdateScenario,
-  onChangeStrategy
+  onChangeStrategy,
+  monthlyIncome = 0,
+  onUpdateIncome,
+  budgetAllocation = {}
 }) => {
-  // State to handle input fields
   const [budgetInput, setBudgetInput] = useState(activeScenario?.totalBudget || '');
   const [refinanceInput, setRefinanceInput] = useState(activeScenario?.refinanceRate || '');
+  const [incomeInput, setIncomeInput] = useState(monthlyIncome || '');
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
+  const [incomeExpanded, setIncomeExpanded] = useState(false);
   
   // Check if this is the ALL scenario
   const isAllScenario = activeScenario?.id === 'ALL_SCENARIO';
@@ -33,6 +37,10 @@ const FloatingToolbar = ({
     setBudgetInput(activeScenario?.totalBudget || '');
     setRefinanceInput(activeScenario?.refinanceRate || '');
   }, [activeScenario]);
+
+  useEffect(() => {
+    setIncomeInput(monthlyIncome || '');
+  }, [monthlyIncome]);
   
   // Handle budget input changes
   const handleBudgetChange = (value) => {
@@ -113,17 +121,23 @@ const FloatingToolbar = ({
   };
 
   return (
+    <>
+    {/* Mobile overlay when expanded */}
+    {!isCollapsed && (
+      <div className="mobile-overlay" onClick={toggleCollapse} />
+    )}
     <div className={`toolbar-fixed toolbar ${isCollapsed ? 'toolbar-collapsed' : 'toolbar-expanded'} bg-white rounded-lg shadow-lg transition-all duration-300`}>
       {/* Collapse toggle button */}
-      <button 
+      <button
         onClick={toggleCollapse}
         className="toolbar-toggle"
         aria-label={isCollapsed ? "Expand toolbar" : "Collapse toolbar"}
       >
-        {isCollapsed ? '>' : '<'}
+        <span className="hidden md:inline">{isCollapsed ? '>' : '<'}</span>
+        <span className="md:hidden">{isCollapsed ? '▲ Calculator Controls' : '▼ Close Controls'}</span>
       </button>
-      
-      <div className={`p-4 ${isCollapsed ? 'hidden' : 'block'}`}>
+
+      <div className={`toolbar-body p-4 ${isCollapsed ? 'hidden' : 'block'}`}>
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-lg font-bold">
             {isAllScenario ? 'ALL Scenarios View' : 'Calculator Controls'}
@@ -196,6 +210,31 @@ const FloatingToolbar = ({
               Min: {formatCurrency(minimumRequired)}
               {isAllScenario && ' (across all loans)'}
             </div>
+            {!isAllScenario && activeScenario?.isBudgetScenario && budgetAllocation.isOverBudget && (
+              <div className="text-xs text-red-600 mt-1 font-medium">
+                Budget scenarios exceed income by {formatCurrency(Math.abs(budgetAllocation.remaining))}
+              </div>
+            )}
+            {/* What-if slider */}
+            <div className="mt-2">
+              <input
+                type="range"
+                min={Math.floor(minimumRequired)}
+                max={Math.max(Math.floor(minimumRequired * 3), Math.floor((parseFloat(budgetInput) || 0) * 2), 1000)}
+                step={50}
+                value={parseFloat(budgetInput) || 0}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setBudgetInput(val);
+                  onUpdateScenario('totalBudget', parseFloat(val));
+                }}
+                className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-500"
+              />
+              <div className="flex justify-between text-xs text-gray-400 mt-0.5">
+                <span>{formatCurrency(Math.floor(minimumRequired))}</span>
+                <span>{formatCurrency(Math.max(Math.floor(minimumRequired * 3), Math.floor((parseFloat(budgetInput) || 0) * 2), 1000))}</span>
+              </div>
+            </div>
           </div>
           
           {/* Payment Strategy */}
@@ -245,6 +284,59 @@ const FloatingToolbar = ({
           </div>
         </div>
         
+        {/* Income Tracking */}
+        <div className="mb-6">
+          <h3
+            className="font-medium mb-2 text-sm text-gray-600 cursor-pointer select-none flex items-center gap-1"
+            onClick={() => setIncomeExpanded(!incomeExpanded)}
+          >
+            <span className="text-xs">{incomeExpanded ? '▼' : '▶'}</span>
+            INCOME TRACKING
+          </h3>
+          {incomeExpanded && (
+            <div>
+              <div className="mb-2">
+                <label className="block text-sm mb-1">Monthly Income</label>
+                <div className="relative">
+                  <span className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-500">$</span>
+                  <input
+                    type="text"
+                    value={incomeInput}
+                    onChange={(e) => setIncomeInput(e.target.value)}
+                    onBlur={() => {
+                      const parsed = parseFloat(incomeInput) || 0;
+                      onUpdateIncome(parsed);
+                    }}
+                    className="border rounded w-full px-6 py-1 text-sm"
+                    placeholder="Enter income"
+                  />
+                </div>
+              </div>
+              {monthlyIncome > 0 && (
+                <div className={`p-2 rounded-lg text-sm ${budgetAllocation.isOverBudget ? 'bg-red-50 border border-red-200' : 'bg-green-50 border border-green-200'}`}>
+                  <div className="flex justify-between mb-1">
+                    <span className="text-gray-600">Income:</span>
+                    <span className="font-medium">{formatCurrency(monthlyIncome)}</span>
+                  </div>
+                  <div className="flex justify-between mb-1">
+                    <span className="text-gray-600">Allocated ({budgetAllocation.budgetScenarioCount}):</span>
+                    <span className="font-medium">{formatCurrency(budgetAllocation.allocated)}</span>
+                  </div>
+                  <div className={`flex justify-between font-bold border-t pt-1 ${budgetAllocation.isOverBudget ? 'text-red-600 border-red-200' : 'text-green-600 border-green-200'}`}>
+                    <span>Remaining:</span>
+                    <span>{formatCurrency(budgetAllocation.remaining)}</span>
+                  </div>
+                  {budgetAllocation.isOverBudget && (
+                    <div className="text-xs text-red-600 mt-1 font-medium">
+                      Over budget by {formatCurrency(Math.abs(budgetAllocation.remaining))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
         {/* Summaries */}
         <div>
           <h3 className="font-medium mb-2 text-sm text-gray-600">OPTIMIZATION SUMMARY</h3>
@@ -258,7 +350,7 @@ const FloatingToolbar = ({
                 <div className="font-bold text-blue-700">{formatCurrency(payoffSummary.totalInterestSaved)}</div>
                 
                 <div className="text-gray-600">Time Saved:</div>
-                <div className="font-bold text-blue-700">{payoffSummary.monthsSaved} months</div>
+                <div className="font-bold text-blue-700">{formatMonths(payoffSummary.monthsSaved)}</div>
                 
                 <div className="text-gray-600">Payoff Date:</div>
                 <div className="font-bold text-blue-700">{payoffSummary.lastLoanPayoffDate}</div>
@@ -275,7 +367,7 @@ const FloatingToolbar = ({
                 <div className="font-bold text-purple-700">{formatCurrency(refinanceSummary.totalInterestSaved)}</div>
                 
                 <div className="text-gray-600">Time Saved:</div>
-                <div className="font-bold text-purple-700">{refinanceSummary.maxMonthsSaved} months</div>
+                <div className="font-bold text-purple-700">{formatMonths(refinanceSummary.maxMonthsSaved)}</div>
                 
                 <div className="text-gray-600">Payoff Date:</div>
                 <div className="font-bold text-purple-700">{refinanceSummary.lastLoanPayoffDate}</div>
@@ -288,6 +380,7 @@ const FloatingToolbar = ({
       {/* Help Modal */}
       <HelpModal isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} />
     </div>
+    </>
   );
 };
 

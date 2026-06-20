@@ -1,18 +1,21 @@
-import React from 'react';
+import React, { useState } from 'react';
 import UnifiedLoanAnalysisCard from './UnifiedLoanAnalysisCard';
+import CascadeTimeline from './CascadeTimeline';
 import { formatCurrency } from '../utils/formatters';
 import { Plus, Calendar } from './icons/Icons';
 
-const UnifiedAnalysisView = ({ 
+const UnifiedAnalysisView = ({
   activeScenario,
   paymentStrategy,
-  loanTileValues = [], // Use calculated tile values instead of raw analysis
+  loanTileValues = [],
   onUpdateLoan,
   onDuplicateLoan,
   onDeleteLoan,
   onAddLoan,
   onAdvanceMonth
 }) => {
+  const [isExpanded, setIsExpanded] = useState(true);
+
   // Check if we have analysis data (budget or refinance rate)
   const hasAnalysisData = activeScenario?.totalBudget > 0 || activeScenario?.refinanceRate > 0;
   const hasLoans = loanTileValues.length > 0;
@@ -72,10 +75,19 @@ const UnifiedAnalysisView = ({
 
   return (
     <section className="bg-white rounded-lg shadow-md p-6">
-      <div className="flex justify-between items-center mb-6">
-        <h2 className="text-xl font-semibold">Loan Management & Analysis</h2>
-        {!activeScenario.isReadOnly && (
-          <div className="flex gap-2">
+      <div
+        className="flex justify-between items-center mb-0 cursor-pointer select-none"
+        onClick={() => setIsExpanded(!isExpanded)}
+      >
+        <h2 className="text-xl font-semibold flex items-center gap-2">
+          <span className="text-gray-400 text-sm">{isExpanded ? '▼' : '▶'}</span>
+          Loan Management & Analysis
+          {!isExpanded && hasLoans && (
+            <span className="text-sm font-normal text-gray-500">({loanTileValues.length} loans)</span>
+          )}
+        </h2>
+        {!activeScenario.isReadOnly && isExpanded && (
+          <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
             <button
               onClick={() => {
                 if (window.confirm("Advance all loans by one month? This will reduce principal and term for all loans in this scenario.")) {
@@ -98,6 +110,8 @@ const UnifiedAnalysisView = ({
           </div>
         )}
       </div>
+
+      {!isExpanded ? null : (<div className="mt-6">
       
       {/* Show message if no analysis data, but still show loans */}
       {!hasAnalysisData && (
@@ -141,7 +155,7 @@ const UnifiedAnalysisView = ({
           {(() => {
             // Sort loans by payment priority based on strategy
             let sortedLoanTileValues = [...loanTileValues];
-            
+
             if (hasAnalysisData) {
               // Sort by strategy priority, not payoff order
               if (paymentStrategy === 'avalanche') {
@@ -160,12 +174,12 @@ const UnifiedAnalysisView = ({
                 });
               }
             }
-            
+
             return sortedLoanTileValues.map(loanTileValue => {
               return (
                 <UnifiedLoanAnalysisCard
                   key={loanTileValue.loan.id}
-                  loanTileValue={loanTileValue}  // Pass the calculated tile value object
+                  loanTileValue={loanTileValue}
                   paymentStrategy={paymentStrategy}
                   isReadOnly={activeScenario.isReadOnly}
                   onUpdateLoan={onUpdateLoan}
@@ -175,6 +189,15 @@ const UnifiedAnalysisView = ({
               );
             });
           })()}
+
+          {/* Cascade Timeline */}
+          {hasAnalysisData && loanTileValues.length > 1 && (
+            <CascadeTimeline
+              loanTileValues={loanTileValues}
+              paymentStrategy={paymentStrategy}
+              totalBudget={activeScenario.totalBudget}
+            />
+          )}
         </div>
       ) : (
         <div className="bg-gray-50 p-6 rounded-lg text-center">
@@ -192,20 +215,7 @@ const UnifiedAnalysisView = ({
         </div>
       )}
       
-      {/* Additional Insights - only show if we have analysis data and summary
-      {summary && hasAnalysisData && (
-        <div className="mt-8 p-4 bg-blue-50 rounded-lg">
-          <h3 className="font-semibold text-blue-800 mb-2">💡 Key Insights</h3>
-          <ul className="text-sm text-blue-700 space-y-1">
-            <li>• Using the {getStrategyName().toLowerCase()} saves you {formatCurrency(summary.totalInterestSaved)} in interest</li>
-            <li>• You'll be debt-free by {summary.finalPayoffDate}</li>
-            <li>• Consider the recommendations shown for each loan to maximize savings</li>
-            {activeScenario.refinanceRate > 0 && (
-              <li>• Refinancing opportunities are highlighted in purple sections</li>
-            )}
-          </ul>
-        </div>
-      )} */}
+      </div>)}
     </section>
   );
 };

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { formatCurrency } from '../utils/formatters';
+import { formatCurrency, formatMonths } from '../utils/formatters';
 import { Copy, Trash } from './icons/Icons';
+import SavingsBreakdownModal from './SavingsBreakdownModal';
 
 const UnifiedLoanAnalysisCard = ({ 
   loanTileValue,  // New prop structure containing all calculated tile data
@@ -17,6 +18,7 @@ const UnifiedLoanAnalysisCard = ({
   
   // State to track raw input values before conversion
   const [inputValues, setInputValues] = useState({});
+  const [breakdownModal, setBreakdownModal] = useState({ open: false, tileType: null });
   
   // Initialize input values from props
   useEffect(() => {
@@ -25,7 +27,9 @@ const UnifiedLoanAnalysisCard = ({
         [`${loan.id}-term`]: loan.term || '',
         [`${loan.id}-principal`]: loan.principal || '',
         [`${loan.id}-rate`]: loan.rate || '',
-        [`${loan.id}-name`]: loan.name || ''
+        [`${loan.id}-name`]: loan.name || '',
+        [`${loan.id}-monthlyInsurance`]: loan.monthlyInsurance || '',
+        [`${loan.id}-monthlyTaxes`]: loan.monthlyTaxes || ''
       });
     }
   }, [loan]);
@@ -61,7 +65,7 @@ const UnifiedLoanAnalysisCard = ({
     if (value === '') return;
     
     try {
-      if (field === 'term' || field === 'principal' || field === 'rate') {
+      if (field === 'term' || field === 'principal' || field === 'rate' || field === 'monthlyInsurance' || field === 'monthlyTaxes') {
         const numValue = parseFloat(value);
         if (!isNaN(numValue)) {
           onUpdateLoan && onUpdateLoan(loan.id, field, numValue);
@@ -84,10 +88,21 @@ const UnifiedLoanAnalysisCard = ({
   const termInput = inputValues[`${loan.id}-term`] !== undefined 
     ? inputValues[`${loan.id}-term`] 
     : term;
-  const nameInput = inputValues[`${loan.id}-name`] !== undefined 
-    ? inputValues[`${loan.id}-name`] 
+  const nameInput = inputValues[`${loan.id}-name`] !== undefined
+    ? inputValues[`${loan.id}-name`]
     : name;
-  
+  const insuranceInput = inputValues[`${loan.id}-monthlyInsurance`] !== undefined
+    ? inputValues[`${loan.id}-monthlyInsurance`]
+    : (loan.monthlyInsurance || '');
+  const taxesInput = inputValues[`${loan.id}-monthlyTaxes`] !== undefined
+    ? inputValues[`${loan.id}-monthlyTaxes`]
+    : (loan.monthlyTaxes || '');
+
+  const isMortgage = loan?.isMortgage || false;
+  const monthlyInsurance = parseFloat(loan?.monthlyInsurance) || 0;
+  const monthlyTaxes = parseFloat(loan?.monthlyTaxes) || 0;
+  const realPayment = (minimumTile.monthlyPayment || 0) + (isMortgage ? monthlyInsurance + monthlyTaxes : 0);
+
   // Get tile data with fallbacks
   const minimumTile = tiles.minimum || {};
   const extraPaymentsTile = tiles.extraPayments;
@@ -259,6 +274,70 @@ const UnifiedLoanAnalysisCard = ({
           </div>
         </div>
         
+        {/* Mortgage toggle and insurance/taxes */}
+        {!isCreditCard && (
+          <div className="mb-3">
+            <label className="flex items-center gap-2 text-xs text-gray-300 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={isMortgage}
+                onChange={(e) => {
+                  if (!isReadOnly) {
+                    onUpdateLoan && onUpdateLoan(loan.id, 'isMortgage', e.target.checked);
+                  }
+                }}
+                className="rounded border-gray-500 bg-gray-700 text-blue-500 focus:ring-blue-500 focus:ring-offset-0"
+                disabled={isReadOnly}
+              />
+              Mortgage (include insurance & taxes)
+            </label>
+            {isMortgage && (
+              <div className="grid grid-cols-2 gap-2 mt-2">
+                <div>
+                  <label className="block text-xs text-gray-300 mb-1">Insurance/mo</label>
+                  <div className="relative">
+                    <span className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-300 text-xs">$</span>
+                    <input
+                      type="text"
+                      value={insuranceInput}
+                      onChange={(e) => handleInputChange('monthlyInsurance', e.target.value)}
+                      onBlur={(e) => handleInputBlur('monthlyInsurance', e.target.value)}
+                      className={`w-full bg-gray-700 border border-gray-600 rounded pl-5 pr-2 py-1 text-white text-sm focus:bg-gray-600 focus:border-gray-500 ${
+                        isReadOnly ? 'cursor-not-allowed opacity-60' : ''
+                      }`}
+                      readOnly={isReadOnly}
+                      placeholder="0"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-300 mb-1">Taxes/mo</label>
+                  <div className="relative">
+                    <span className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-300 text-xs">$</span>
+                    <input
+                      type="text"
+                      value={taxesInput}
+                      onChange={(e) => handleInputChange('monthlyTaxes', e.target.value)}
+                      onBlur={(e) => handleInputBlur('monthlyTaxes', e.target.value)}
+                      className={`w-full bg-gray-700 border border-gray-600 rounded pl-5 pr-2 py-1 text-white text-sm focus:bg-gray-600 focus:border-gray-500 ${
+                        isReadOnly ? 'cursor-not-allowed opacity-60' : ''
+                      }`}
+                      readOnly={isReadOnly}
+                      placeholder="0"
+                    />
+                  </div>
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-xs text-gray-300 mb-1">Real Payment (P&I + Ins + Tax)</label>
+                  <div className="bg-blue-600 bg-opacity-30 border border-blue-500 rounded px-2 py-1 text-blue-100 text-sm font-medium">
+                    {formatCurrency(realPayment)}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Refinance rate info for ALL scenario loans */}
         {isFromAllScenario && sourceRefinanceRate > 0 && (
           <div className="mb-3 p-2 bg-purple-600 bg-opacity-30 rounded">
@@ -269,11 +348,21 @@ const UnifiedLoanAnalysisCard = ({
         
         {/* End date display and loan totals */}
         <div className="mt-auto space-y-3">
-          <div>
-            <label className="block text-xs text-gray-300 mb-1">End Date</label>
-            <div className="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-white text-xs">
-              {formatEndDate()}
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="block text-xs text-gray-300 mb-1">End Date</label>
+              <div className="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-white text-xs">
+                {formatEndDate()}
+              </div>
             </div>
+            {extraPaymentsTile && extraPaymentsTile.payoffMonths > 0 && (
+              <div>
+                <label className="block text-xs text-green-300 mb-1">Debt Free</label>
+                <div className="bg-green-800 border border-green-600 rounded px-2 py-1 text-green-100 text-xs font-medium">
+                  {formatRelativeDate(extraPaymentsTile.payoffMonths)}
+                </div>
+              </div>
+            )}
           </div>
           
           {/* Total payment and interest calculations */}
@@ -349,8 +438,8 @@ const UnifiedLoanAnalysisCard = ({
                 <div className="metric-item bg-white p-2 rounded-lg shadow-sm text-center flex flex-col justify-center min-h-[4rem]">
                   <div className="metric-label text-xs text-green-600 font-medium mb-1">Saved</div>
                   <div className="metric-value text-xs font-semibold text-green-600">
-                    {extraPaymentsTile.monthsSaved > 0 ? `${extraPaymentsTile.monthsSaved}mo` : 
-                     extraPaymentsTile.extraPayment > 0 ? '0mo' : 'Est.'}
+                    {extraPaymentsTile.monthsSaved > 0 ? formatMonths(extraPaymentsTile.monthsSaved) :
+                     extraPaymentsTile.extraPayment > 0 ? '0M' : 'Est.'}
                   </div>
                 </div>
               </div>
@@ -358,7 +447,14 @@ const UnifiedLoanAnalysisCard = ({
               <div className="savings-highlight bg-green-600 text-white p-2 rounded-lg text-center mt-auto">
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <div className="text-xs opacity-90">Interest Saved</div>
+                    <div className="text-xs opacity-90 flex items-center justify-center gap-1">
+                      Interest Saved
+                      <button
+                        onClick={() => setBreakdownModal({ open: true, tileType: 'extra' })}
+                        className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-white bg-opacity-30 hover:bg-opacity-50 text-xs leading-none"
+                        title="View savings breakdown"
+                      >?</button>
+                    </div>
                     <div className="text-sm font-bold mt-1">
                       {formatCurrency(extraPaymentsTile.interestSaved || 0)}
                     </div>
@@ -414,7 +510,7 @@ const UnifiedLoanAnalysisCard = ({
                 <div className="metric-item bg-white p-2 rounded-lg shadow-sm text-center flex flex-col justify-center min-h-[4rem]">
                   <div className="metric-label text-xs text-purple-600 font-medium mb-1">Time Saved</div>
                   <div className="metric-value text-xs font-semibold text-purple-600">
-                    {refinanceTile.monthsSaved > 0 ? `${refinanceTile.monthsSaved}mo` : "0mo"}
+                    {refinanceTile.monthsSaved > 0 ? formatMonths(refinanceTile.monthsSaved) : "0M"}
                   </div>
                 </div>
               </div>
@@ -422,7 +518,14 @@ const UnifiedLoanAnalysisCard = ({
               <div className="refinance-highlight bg-purple-600 text-white p-2 rounded-lg text-center mt-auto">
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <div className="text-xs opacity-90">Interest Saved</div>
+                    <div className="text-xs opacity-90 flex items-center justify-center gap-1">
+                      Interest Saved
+                      <button
+                        onClick={() => setBreakdownModal({ open: true, tileType: 'refinance' })}
+                        className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-white bg-opacity-30 hover:bg-opacity-50 text-xs leading-none"
+                        title="View savings breakdown"
+                      >?</button>
+                    </div>
                     <div className="text-sm font-bold mt-1">
                       {formatCurrency(refinanceTile.interestSaved || 0)}
                     </div>
@@ -476,7 +579,7 @@ const UnifiedLoanAnalysisCard = ({
                 <div className="metric-item bg-white p-2 rounded-lg shadow-sm text-center flex flex-col justify-center min-h-[4rem]">
                   <div className="metric-label text-xs text-amber-600 font-medium mb-1">Time Saved</div>
                   <div className="metric-value text-xs font-semibold text-amber-600">
-                    {combinedTile.monthsSaved > 0 ? `${combinedTile.monthsSaved}mo` : "0mo"}
+                    {combinedTile.monthsSaved > 0 ? formatMonths(combinedTile.monthsSaved) : "0M"}
                   </div>
                 </div>
               </div>
@@ -484,7 +587,14 @@ const UnifiedLoanAnalysisCard = ({
               <div className="combined-highlight bg-amber-500 text-white p-2 rounded-lg text-center mt-auto">
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <div className="text-xs opacity-90">Interest Saved</div>
+                    <div className="text-xs opacity-90 flex items-center justify-center gap-1">
+                      Interest Saved
+                      <button
+                        onClick={() => setBreakdownModal({ open: true, tileType: 'combined' })}
+                        className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-white bg-opacity-30 hover:bg-opacity-50 text-xs leading-none"
+                        title="View savings breakdown"
+                      >?</button>
+                    </div>
                     <div className="text-sm font-bold mt-1">
                       {formatCurrency(combinedTile.interestSaved || 0)}
                     </div>
@@ -510,7 +620,7 @@ const UnifiedLoanAnalysisCard = ({
             <div className="text-gray-400 mb-2">📊</div>
             <h3 className="text-sm font-medium text-gray-600 mb-2">No Optimization Available</h3>
             <p className="text-xs text-gray-500 max-w-xs">
-              {isFromAllScenario 
+              {isFromAllScenario
                 ? `Set a refinance rate in the "${loan.sourceScenarioName}" scenario and/or increase the budget to see optimization opportunities.`
                 : "Set a budget and/or refinance rate in the toolbar to see optimization opportunities."
               }
@@ -518,6 +628,20 @@ const UnifiedLoanAnalysisCard = ({
           </div>
         </div>
       )}
+
+      {/* Savings Breakdown Modal */}
+      <SavingsBreakdownModal
+        isOpen={breakdownModal.open}
+        onClose={() => setBreakdownModal({ open: false, tileType: null })}
+        loan={loan}
+        minimumTile={minimumTile}
+        optimizedTile={
+          breakdownModal.tileType === 'extra' ? extraPaymentsTile :
+          breakdownModal.tileType === 'refinance' ? refinanceTile :
+          breakdownModal.tileType === 'combined' ? combinedTile : null
+        }
+        tileType={breakdownModal.tileType}
+      />
     </div>
   );
 };

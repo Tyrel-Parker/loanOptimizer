@@ -1,5 +1,6 @@
 import React from 'react';
 import { Calculator, Copy, Plus, Trash } from './icons/Icons';
+import { formatCurrency } from '../utils/formatters';
 
 const ScenarioManager = ({
   scenarios,
@@ -8,7 +9,10 @@ const ScenarioManager = ({
   onAddScenario,
   onDuplicateScenario,
   onDeleteScenario,
-  onUpdateScenarioName
+  onUpdateScenarioName,
+  onToggleBudget,
+  monthlyIncome = 0,
+  budgetAllocation = {}
 }) => {
   const activeScenario = scenarios.find(s => s.id === activeScenarioId) || scenarios[0];
   const isAllScenario = activeScenarioId === 'ALL_SCENARIO';
@@ -38,15 +42,16 @@ const ScenarioManager = ({
           {scenarios.map(scenario => {
             const isAll = scenario.id === 'ALL_SCENARIO';
             const isActive = activeScenarioId === scenario.id;
-            
+            const isBudget = scenario.isBudgetScenario;
+
             return (
               <button
                 key={scenario.id}
                 onClick={() => onSelectScenario(scenario.id)}
                 className={`px-3 py-1 rounded flex items-center gap-1 transition-colors ${
                   isActive
-                    ? isAll 
-                      ? 'bg-purple-500 text-white shadow-md' 
+                    ? isAll
+                      ? 'bg-purple-500 text-white shadow-md'
                       : 'bg-blue-500 text-white shadow-md'
                     : isAll
                       ? 'bg-purple-100 hover:bg-purple-200 text-purple-800'
@@ -55,6 +60,7 @@ const ScenarioManager = ({
                 title={isAll ? 'View all loans from all scenarios combined' : `Switch to ${scenario.name} scenario`}
               >
                 {isAll && <span className="text-xs">🔗</span>}
+                {!isAll && isBudget && <span className="text-xs">💰</span>}
                 {scenario.name}
                 {isAll && (
                   <span className="text-xs opacity-75">
@@ -116,8 +122,8 @@ const ScenarioManager = ({
               </span>
             </div>
             <p className="text-sm text-purple-700">
-              This view combines all loans from your {regularScenarios.length} scenarios. 
-              You can analyze payment strategies across all your loans, but cannot edit individual loans here. 
+              This view combines all loans from your {regularScenarios.length} scenarios.
+              You can analyze payment strategies across all your loans, but cannot edit individual loans here.
               Switch to a specific scenario to make changes.
             </p>
             {activeScenario.loans.length === 0 && (
@@ -125,10 +131,45 @@ const ScenarioManager = ({
                 No loans found. Add some loans to your scenarios to see them here.
               </p>
             )}
+            {/* Budget allocation bar in ALL view */}
+            {monthlyIncome > 0 && (
+              <div className={`mt-3 p-3 rounded-lg ${budgetAllocation.isOverBudget ? 'bg-red-50 border border-red-200' : 'bg-white border border-purple-200'}`}>
+                <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm">
+                  <div>
+                    <span className="text-gray-600">Income: </span>
+                    <span className="font-bold">{formatCurrency(monthlyIncome)}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-600">Allocated ({budgetAllocation.budgetScenarioCount} scenarios): </span>
+                    <span className="font-bold">{formatCurrency(budgetAllocation.allocated)}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-600">Remaining: </span>
+                    <span className={`font-bold ${budgetAllocation.isOverBudget ? 'text-red-600' : 'text-green-600'}`}>
+                      {formatCurrency(budgetAllocation.remaining)}
+                    </span>
+                  </div>
+                </div>
+                {budgetAllocation.isOverBudget && (
+                  <div className="text-xs text-red-600 mt-1 font-medium">
+                    Warning: Budget scenarios exceed your monthly income by {formatCurrency(Math.abs(budgetAllocation.remaining))}
+                  </div>
+                )}
+                {/* Budget progress bar */}
+                {monthlyIncome > 0 && (
+                  <div className="mt-2 h-2 bg-gray-200 rounded-full overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all ${budgetAllocation.isOverBudget ? 'bg-red-500' : 'bg-green-500'}`}
+                      style={{ width: `${Math.min(100, (budgetAllocation.allocated / monthlyIncome) * 100)}%` }}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         ) : (
           <div className="p-3 bg-gradient-to-r from-blue-50 to-blue-100 rounded-lg">
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 flex-wrap">
               <label htmlFor="scenarioName" className="font-semibold text-blue-800">Scenario Name:</label>
               <input
                 id="scenarioName"
@@ -137,7 +178,24 @@ const ScenarioManager = ({
                 onChange={(e) => onUpdateScenarioName(activeScenarioId, e.target.value)}
                 className="border border-blue-300 rounded px-3 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
+              <label className="flex items-center gap-1.5 text-sm text-blue-700 cursor-pointer select-none ml-auto">
+                <input
+                  type="checkbox"
+                  checked={activeScenario.isBudgetScenario || false}
+                  onChange={() => onToggleBudget(activeScenarioId)}
+                  className="rounded border-blue-400 text-blue-500 focus:ring-blue-500"
+                />
+                💰 Budget scenario
+              </label>
             </div>
+            {activeScenario.isBudgetScenario && monthlyIncome > 0 && (
+              <div className="mt-2 text-xs text-blue-600">
+                This scenario's budget ({formatCurrency(activeScenario.totalBudget || 0)}) counts toward your {formatCurrency(monthlyIncome)} monthly income.
+                <span className={`ml-1 font-medium ${budgetAllocation.isOverBudget ? 'text-red-600' : 'text-green-600'}`}>
+                  ({formatCurrency(budgetAllocation.remaining)} remaining)
+                </span>
+              </div>
+            )}
           </div>
         )}
       </div>
