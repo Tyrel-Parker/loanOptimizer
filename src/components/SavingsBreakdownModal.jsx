@@ -26,18 +26,16 @@ const colorStyles = {
 const SavingsBreakdownModal = ({ isOpen, onClose, loan, minimumTile, optimizedTile, tileType }) => {
   const [viewMode, setViewMode] = useState('yearly');
 
-  if (!isOpen || !loan || !minimumTile || !optimizedTile) return null;
-
-  const principal = loan.principal || 0;
-  const rate = loan.rate || 0;
-  const term = loan.term || 0;
+  const principal = loan?.principal || 0;
+  const rate = loan?.rate || 0;
+  const term = loan?.term || 0;
   const isCreditCard = term === 0;
-
   const colors = colorStyles[tileType] || colorStyles.extra;
 
   const breakdown = useMemo(() => {
+    if (!minimumTile || !optimizedTile) return [];
+
     const origMonths = minimumTile.payoffMonths || 0;
-    const optMonths = optimizedTile.payoffMonths || 0;
     const origInterest = minimumTile.totalInterest || 0;
     const optInterest = optimizedTile.totalInterest || 0;
     const totalSaved = origInterest - optInterest;
@@ -49,6 +47,7 @@ const SavingsBreakdownModal = ({ isOpen, onClose, loan, minimumTile, optimizedTi
     let optBalance = principal;
     const origPayment = minimumTile.monthlyPayment || 0;
     const optPayment = optimizedTile.monthlyPayment || origPayment;
+    const optMonths = optimizedTile.payoffMonths || 0;
 
     const months = [];
     const maxMonths = Math.max(origMonths, optMonths);
@@ -63,25 +62,23 @@ const SavingsBreakdownModal = ({ isOpen, onClose, loan, minimumTile, optimizedTi
       origCumInterest += origMonthInterest;
       optCumInterest += optMonthInterest;
 
-      let origPrincipalPayment = 0;
       if (origBalance > 0.01) {
         let payment = origPayment;
         if (isCreditCard) {
           payment = Math.max(origBalance * 0.02, 25);
           payment = Math.min(payment, origBalance + origMonthInterest);
         }
-        origPrincipalPayment = Math.min(payment - origMonthInterest, origBalance);
+        const origPrincipalPayment = Math.min(payment - origMonthInterest, origBalance);
         origBalance = Math.max(0, origBalance - origPrincipalPayment);
       }
 
-      let optPrincipalPayment = 0;
       if (optBalance > 0.01) {
         let payment = optPayment;
         if (isCreditCard) {
           payment = Math.max(optBalance * 0.02, 25);
           payment = Math.min(payment, optBalance + optMonthInterest);
         }
-        optPrincipalPayment = Math.min(payment - optMonthInterest, optBalance);
+        const optPrincipalPayment = Math.min(payment - optMonthInterest, optBalance);
         optBalance = Math.max(0, optBalance - optPrincipalPayment);
       }
 
@@ -99,7 +96,7 @@ const SavingsBreakdownModal = ({ isOpen, onClose, loan, minimumTile, optimizedTi
     }
 
     return months;
-  }, [principal, rate, term, isCreditCard, minimumTile, optimizedTile]);
+  }, [principal, rate, isCreditCard, minimumTile, optimizedTile]);
 
   const yearlyBreakdown = useMemo(() => {
     if (breakdown.length === 0) return [];
@@ -119,6 +116,8 @@ const SavingsBreakdownModal = ({ isOpen, onClose, loan, minimumTile, optimizedTi
     }
     return years;
   }, [breakdown]);
+
+  if (!isOpen || !loan || !minimumTile || !optimizedTile) return null;
 
   const totalSaved = (minimumTile.totalInterest || 0) - (optimizedTile.totalInterest || 0);
   const monthsSaved = (minimumTile.payoffMonths || 0) - (optimizedTile.payoffMonths || 0);
