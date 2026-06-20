@@ -98,16 +98,16 @@ const UnifiedLoanAnalysisCard = ({
     ? inputValues[`${loan.id}-monthlyTaxes`]
     : (loan.monthlyTaxes || '');
 
-  const isMortgage = loan?.isMortgage || false;
-  const monthlyInsurance = parseFloat(loan?.monthlyInsurance) || 0;
-  const monthlyTaxes = parseFloat(loan?.monthlyTaxes) || 0;
-  const realPayment = (minimumTile.monthlyPayment || 0) + (isMortgage ? monthlyInsurance + monthlyTaxes : 0);
-
   // Get tile data with fallbacks
   const minimumTile = tiles.minimum || {};
   const extraPaymentsTile = tiles.extraPayments;
   const refinanceTile = tiles.refinance;
   const combinedTile = tiles.combined;
+
+  const isMortgage = loan?.isMortgage || false;
+  const monthlyInsurance = parseFloat(loan?.monthlyInsurance) || 0;
+  const monthlyTaxes = parseFloat(loan?.monthlyTaxes) || 0;
+  const realPayment = (minimumTile.monthlyPayment || 0) + (isMortgage ? monthlyInsurance + monthlyTaxes : 0);
   
   // Format dates
   const formatRelativeDate = (months) => {
